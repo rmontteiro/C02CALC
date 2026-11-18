@@ -1,0 +1,11 @@
+# artefatos de execução / build (não versionar)
+.venv/
+venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+data/
+*.db
+*.sqlite
