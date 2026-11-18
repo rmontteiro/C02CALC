@@ -4,7 +4,7 @@ App desktop **100 % Python + SQLite** (Flet), com:
 
 * **Motor de cálculo próprio** (`co2calc/engine.py`): estimativa rápida em 4 etapas (moradia, direção, voos, dieta) + apuração detalhada por atividade, com fatores Defra/DESNZ (WTT incluso), rede elétrica por país (IEA/Ember aproximado) e médias nacionais per capita (OECD/Defra aproximado). Ver `docs/METODOLOGIA.md`.
 * **Design reconhecível**: fundo verde-menta, cards brancos arredondados com sombra suave, **gauge circular de pontuação 0–100**, cartões de tipologia com emoji (🚗 🍽 🏠 🛍), histórico de lançamentos, navegação inferior em 5 abas. Ver `docs/GUIA_DE_MARCA.md`.
-* **Taxonomia anexa** (planilha `Taxonomia_Mundial_Pegada_Carbono_Individual.xlsx`): os 586 nós de 4 níveis, 33 métodos e regras de rateio foram importados para o SQLite e são usados no formulário de lançamento (setor → atividade → método → fator).
+* **📚 Taxonomia de emissões**: o CO2calc usa a ***Minha Pegada — Taxonomia Mundial de Pegada de Carbono Individual*** (586 nós em 4 níveis, 470 atividades, 33 métodos, regras R01–R16, vínculo COICOP/ISO 3166). A **planilha-mestre está versionada no repositório** em [`docs/taxonomia/`](docs/taxonomia/), com **SHA-256 registrado no banco do app** e exibido na interface. Referência completa, mapa planilha→tabelas e citação sugerida em **[`docs/TAXONOMIA.md`](docs/TAXONOMIA.md)**. Verificação: `python tools/reextrair_seeds.py --check`.
 
 ## Estrutura
 
@@ -19,6 +19,8 @@ CO2calc/
 │  ├─ reports.py           # relatórios PDF (reportlab)
 │  ├─ seed/*.json          # taxonomia, métodos, fatores, países (do XLSX)
 │  └─ ui/                  # telas: home, lançar, calculadora, monitor, usuários
+├─ docs/taxonomia/         # planilha-mestre da taxonomia (.xlsx + CHECKSUMS.txt)
+├─ tools/reextrair_seeds.py# confere/regenera os seeds a partir da planilha
 ├─ assets/                 # icon_512/192, favicon, ic_launcher, co2calc.ico, SVGs
 ├─ data/                   # co2calc.db + gráficos gerados + relatorios/*.pdf
 ├─ tests/test_smoke.py     # sanidade de banco, engine, telas e PDF

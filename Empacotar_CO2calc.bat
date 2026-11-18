@@ -15,7 +15,7 @@ pip install -q --upgrade pip
 pip install -q -r requirements.txt
 pip install -q pyinstaller
 
-flet pack app.py --name CO2calc -y --icon assets\co2calc.ico --product-name CO2calc --company-name CO2calc --copyright "Uso educativo - fatores publicos (Defra/OECD/IEA aprox.)" --add-data "co2calc\seed;co2calc\seed" --add-data "assets;assets"
+flet pack app.py --name CO2calc -y --icon assets\co2calc.ico --product-name CO2calc --company-name CO2calc --copyright "Uso educativo - fatores publicos (Defra/OECD/IEA aprox.)" --add-data "co2calc\seed;co2calc\seed" --add-data "docs\taxonomia;docs\taxonomia" --add-data "assets;assets"
 if exist dist\CO2calc.exe (
   echo.
   echo [OK] Executavel criado: %cd%\dist\CO2calc.exe

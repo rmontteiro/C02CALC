@@ -124,7 +124,10 @@ def build(app):
     info = card(ft.Column([
         title("🗄️ Banco de dados local"),
         kv("Arquivo SQLite", str(db.DB_PATH), size=11.5),
-        kv("Taxonomia importada", "586 nós (A–J) · 470 atividades · 33 métodos · 63 países", size=11.5),
+        kv("Taxonomia (referência-mestre)",
+           "Minha Pegada — Mundial · 586 nós (A–J) · 470 atividades · 33 métodos · R01–R16 · docs/TAXONOMIA.md", size=10.5),
+        kv("Versão da planilha (SHA-256)",
+           str((con.execute("SELECT valor FROM ajustes WHERE chave='taxonomia_sha256'").fetchone() or {"valor": "n/d"})["valor"])[:32] + "…", size=10.5),
         kv("Portabilidade", "mesmo esquema SQLite será usado no app Android (roadmap em docs/)", size=11.5),
         ft.Row([btn("Exportar lançamentos (CSV)", lambda e: exportar_csv(e), filled=False, icon=ft.Icons.DESCRIPTION)],
                spacing=8),

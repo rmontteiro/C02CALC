@@ -95,12 +95,12 @@ def init_db(path=None, seed_demo=True):
     con.executescript(SCHEMA)
     cur = con.cursor()
     v = cur.execute("SELECT v FROM schema_meta").fetchone()
-    if not v or v["v"] < 2:
+    if not v or v["v"] < 3:
         _seed(cur)
         if v:
-            cur.execute("UPDATE schema_meta SET v=2")
+            cur.execute("UPDATE schema_meta SET v=3")
         else:
-            cur.execute("INSERT INTO schema_meta VALUES (2)")
+            cur.execute("INSERT INTO schema_meta VALUES (3)")
         if seed_demo:
             _demo(cur)
         con.commit()
@@ -126,6 +126,16 @@ def _seed(cur):
     fac = _load("fatores.json")["fatores"]
     cur.executemany("INSERT OR IGNORE INTO fatores(codigo,grupo,metodo,unidade,valor,descricao,fonte) VALUES (?,?,?,?,?,?,?)",
                     [(f["codigo"], f["grupo"], f["metodo"], f["unidade"], f["valor"], f["descricao"], f["fonte"]) for f in fac])
+    import hashlib
+    tx = os.path.join(os.path.dirname(BASE), "docs", "taxonomia",
+                      "Taxonomia_Mundial_Pegada_Carbono_Individual.xlsx")
+    if os.path.exists(tx):
+        sha = hashlib.sha256(open(tx, "rb").read()).hexdigest()
+    else:
+        sha = _load("taxonomia_meta.json")["sha256"]
+    cur.execute("INSERT OR IGNORE INTO ajustes(chave,valor) VALUES ('taxonomia_sha256',?)", (sha,))
+    cur.execute("INSERT OR IGNORE INTO ajustes(chave,valor) VALUES ('taxonomia_titulo',?)",
+                ("Minha Pegada — Taxonomia Mundial de Pegada de Carbono Individual (rev. 2026-11-18)",))
     pai = _load("paises.json")["paises"]
     cur.executemany("INSERT OR IGNORE INTO paises VALUES (?,?,?,?)",
                     [(p["iso"], p["nome"], p["grid"], p["media"]) for p in pai])
