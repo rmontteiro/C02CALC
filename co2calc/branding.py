@@ -56,6 +56,14 @@ def grupo_de_codigo(codigo: str) -> str:
     return SETOR_GRUPO.get(letra, "FORA")
 
 
+def flag_emoji(iso):
+    """Emoji de bandeira a partir do código ISO-3166 (ex.: BR -> 🇧🇷)."""
+    iso = (iso or "").upper()
+    if len(iso) == 2 and iso.isalpha():
+        return "".join(chr(127397 + ord(c)) for c in iso)
+    return "🌍"
+
+
 # ---- faixas de pontuação (score 0-100) ----
 BANDAS = [
     (80, 101, "Excelente",  "#0FA968"),

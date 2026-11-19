@@ -441,6 +441,8 @@ _CAT = {
 }
 
 _CAT.update({
+    "{flag} {pais} · {p} pessoas no domicílio": ("{flag} {pais} · {p} people in household", "{flag} {pais} · {p} personas en el hogar"),
+    "🌐 Idioma: {l}": ("🌐 Language: {l}", "🌐 Idioma: {l}"),
     "Calcular minha pegada ⚡": ("Calculate my footprint ⚡", "Calculá mi huella ⚡"),
     "Aplicar idioma": ("Apply language", "Aplicar idioma"),
     "{pais} · {p} pessoas · {c} registros · {sz} kg": ("{pais} · {p} people · {c} entries · {sz} kg", "{pais} · {p} personas · {c} registros · {sz} kg"),
