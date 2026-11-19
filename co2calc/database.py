@@ -100,7 +100,10 @@ def now():
 
 
 def connect(path=None):
-    path = path or DB_PATH
+    # DB_PATH é resolvido em tempo de chamada (não no import): os testes
+    # redefinem CO2CALC_DB por módulo, e um valor congelado no import faria
+    # o App abrir um banco diferente do que foi gravado.
+    path = path or os.environ.get("CO2CALC_DB") or DB_PATH
     os.makedirs(os.path.dirname(path), exist_ok=True)
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
