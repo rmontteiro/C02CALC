@@ -4,6 +4,7 @@ periodicidade mensal ou anual, rateio e prévia do cálculo E = v × f ÷ n."""
 import flet as ft
 from .. import branding as B
 from .. import database as db
+from .. import rotulos_fatores as RF
 from .widgets import card, title, sub, kv, dropdown, btn, icon_btn, num_field
 
 B_MONTHS = db.MONTHS
@@ -82,7 +83,8 @@ def build(app):
                 metas = [g]
         opts = []
         for m in metas:
-            opts.append(ft.dropdown.Option(m["codigo"], f"{(m['valor']):g} kg/{m['unidade']} · {m['descricao'][:64]}"))
+            opts.append(ft.dropdown.Option(m["codigo"],
+                            f"{RF.rotulo(m['codigo'], dict(m))} — {m['valor']:g} kgCO₂e/{m['unidade']}"))
         dd_fator.options = opts
         if opts:
             dd_fator.value = opts[0].key

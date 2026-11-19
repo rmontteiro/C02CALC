@@ -5,6 +5,7 @@ import csv, os, datetime
 import flet as ft
 from .. import branding as B
 from .. import database as db
+from .. import rotulos_fatores as RF
 from .widgets import card, title, sub, btn, icon_btn, num_field, kv
 
 COR_USUARIO = [B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
@@ -65,16 +66,33 @@ def build(app):
 
     # ---- editores de fatores ----
     estado = {"msg": ft.Text("", size=12, color=B.ACCENT_4)}
-    cods = [r["codigo"] for r in con.execute("SELECT codigo FROM fatores WHERE valor IS NOT NULL ORDER BY grupo, codigo")]
+    fat_rows = RF.ordenar(con.execute(
+        "SELECT codigo, grupo, unidade, valor, descricao, fonte FROM fatores "
+        "WHERE valor IS NOT NULL").fetchall())
 
-    def carregar_fator(e):
+    sobre = ft.Column([], spacing=6)
+    painel_sobre = card(ft.Column([title("📖 Sobre este fator"),
+                                   sub("o que significa, onde o app usa e de onde vem o valor selecionado"),
+                                   sobre], spacing=8), expand=2)
+
+    def carregar_fator(e=None):
         f = con.execute("SELECT * FROM fatores WHERE codigo=?", (dd_f.value,)).fetchone()
-        if f:
-            tf_fval.value = str(f["valor"])
-            estado["msg"].value = f"{f['descricao']} · fonte: {f['fonte']} · un.: {f['unidade']}"
-            dd_f.update() if False else None
+        if not f:
+            return
+        tf_fval.value = f"{f['valor']:g}"
+        d = dict(f)
+        sobre.controls = [
+            ft.Text(RF.rotulo(f["codigo"], d), size=12.5, weight=ft.FontWeight.W_600, color=B.INK),
+            sub(RF.GRUPO_NOME.get(f["grupo"], f["grupo"] or "")),
+            ft.Text(RF.explicacao(f["codigo"], d), size=11.5, color=B.INK_SOFT, selectable=True),
+            kv("Unidade do valor", RF.unidade_texto(f["unidade"]), size=10.5),
+            kv("Fonte registrada", f["fonte"] or "—", size=10.5),
+            kv("Código interno", f["codigo"], size=10.5),
+        ]
+        if tf_fval.page:
             tf_fval.update()
-            estado["msg"].update()
+        if painel_sobre.page:
+            painel_sobre.update()
 
     def gravar_fator(e):
         try:
@@ -91,19 +109,28 @@ def build(app):
             iso = dd_f.value[6:]
             con.execute("UPDATE paises SET media=? WHERE iso=?", (v, iso))
         con.commit()
-        estado["msg"].value = f"Fator {dd_f.value} atualizado para {v:g} ✓"
+        estado["msg"].value = f"Fator atualizado: {RF.rotulo(dd_f.value)} → {v:g} ✓"
         estado["msg"].update()
+        carregar_fator()
 
-    dd_f = ft.Dropdown(label="Fator (código)", width=330, options=[ft.dropdown.Option(c) for c in cods[:40]],
-                        border_color=B.GRID_LINE, focused_border_color=B.PRIMARY, border_radius=12,
-                        content_padding=10, text_size=12, on_change=carregar_fator)
+    dd_f = ft.Dropdown(label="Fator de emissão (nome completo)", width=430,
+                       options=[ft.dropdown.Option(key=r["codigo"], text=RF.rotulo(r["codigo"], dict(r)))
+                                for r in fat_rows],
+                       border_color=B.GRID_LINE, focused_border_color=B.PRIMARY, border_radius=12,
+                       content_padding=10, text_size=12, on_change=carregar_fator)
     tf_fval = num_field("Novo valor", "", width=140)
     painel_fat = card(ft.Column([
         ft.Row([title("⚙️ Editar fatores de emissão"),
-                sub("inclui GRID_<país> e MEDIA_<país> — recalcula tudo no app")], spacing=10, wrap=True),
+                sub("todos os fatores do cálculo, incluindo a rede elétrica e a média nacional do seu país — "
+                    "ao gravar, tudo é recalculado no app")], spacing=10, wrap=True),
         ft.Row([dd_f, tf_fval, btn("Gravar fator", gravar_fator, small=True)], wrap=True, spacing=10),
         estado["msg"],
-    ], spacing=10))
+    ], spacing=10), expand=3)
+    if fat_rows:
+        dd_f.value = fat_rows[0]["codigo"]
+        carregar_fator(None)
+    linha_fatores = ft.Row([painel_fat, painel_sobre], spacing=10,
+                           vertical_alignment=ft.CrossAxisAlignment.START)
 
     # ---- CSV + info do banco ----
     def exportar_csv(e):
@@ -140,4 +167,4 @@ def build(app):
         ft.Row([tf_obs, btn("Cadastrar", salvar_usuario, icon=ft.Icons.PERSON_ADD)], wrap=True, spacing=10),
     ], spacing=10))
 
-    return ft.Column([form, *linhas, painel_fat, info], scroll=ft.ScrollMode.AUTO, spacing=10)
+    return ft.Column([form, *linhas, linha_fatores, info], scroll=ft.ScrollMode.AUTO, spacing=10)
