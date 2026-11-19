@@ -27,14 +27,20 @@ def _force_update(*ctrls):
 
 def build(app):
     con, st = app.con, app.state
+    # FIX (Menu Dinâmico): sempre reler a lista de usuários do banco a cada
+    # build — nunca confiar em cache visual anterior.
     usuarios = db.list_usuarios(con)
     if not usuarios:
         st["uid"] = None
         return card(ft.Column([title(I.T("Nenhum usuário cadastrado")),
-                               btn(I.T("Cadastrar usuário"), lambda e: app.navigate("usuarios"))]))
-    if st["uid"] is None or st["uid"] not in [u["id"] for u in usuarios]:
-        st["uid"] = usuarios[0]["id"]
-    u = next(x for x in usuarios if x["id"] == st["uid"])
+                               sub(I.T("Vá até a aba Usuários para criar seu primeiro perfil.")),
+                               btn(I.T("Ir para Usuários"), lambda e: app.navigate("usuarios"))]))
+
+    # Validação robusta do UID selecionado
+    ids_validos = [x["id"] for x in usuarios]
+    if st["uid"] is None or st["uid"] not in ids_validos:
+        st.update(uid=usuarios[0]["id"])
+    u = dict(next((x for x in usuarios if x["id"] == st["uid"]), usuarios[0]))
 
     # ---- cabeçalho do painel ----
     dd_user = dropdown(I.T("Usuário"), [(str(x["id"]), x["nome"]) for x in usuarios],
@@ -74,13 +80,12 @@ def build(app):
                 seg([I.T("ano"), I.T("mês")], lambda disp: modo_change("mês" if disp == I.T("mês") else "ano"), I.T(st["modo"]))], spacing=10, wrap=True),
     ]))
 
-    # ---- métricas ----
-    if st["modo"] == "mês":
-        total = db.total_usuario(con, u["id"], st["ano"], st["mes"])
-        periodo = f"{I.meses_ab()[st['mes'] - 1]} {st['ano']}"
-    else:
-        total = db.total_usuario(con, u["id"], st["ano"])
-        periodo = str(st["ano"])
+    # ---- métricas e cartões de tipologia (CORREÇÃO) ----
+    # Força reconsulta ao banco baseada NO uid do state (sem cache anterior).
+    mes_ref = st["mes"] if st["modo"] == "mês" else None
+    total = db.total_usuario(con, u["id"], st["ano"], mes_ref)
+    gr = db.por_grupo(con, u["id"], st["ano"], mes_ref)
+    periodo = (f"{I.meses_ab()[st['mes'] - 1]} {st['ano']}" if st["modo"] == "mês" else str(st["ano"]))
     score_v, lbl, ratio = db.score(con, u["id"], st["ano"], st["mes"])
     media = db.media_pais(con, u["pais"])
     an = db.anualizado(con, u["id"], st["ano"], st["mes"]) / max(1, u["pessoas"])
@@ -97,19 +102,19 @@ def build(app):
                      bgcolor=ft.Colors.with_opacity(0.08, "#E0563A"), padding=ft.padding.symmetric(5, 12), border_radius=999),
     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
 
-    # ---- cartões de tipologia ----
-    gr = db.por_grupo(con, u["id"], st["ano"], st["mes"] if st["modo"] == "mês" else None)
+    # ---- cartões de tipologia (gerados com dados filtrados do uid atual) ----
     cards, txt_grupos = [], {}
     for g in GRP_ORDER:
         meta = B.GRUPO_META[g]
-        v = gr.get(g, 0.0)
+        v = round(gr.get(g, 0.0), 1)
         t = ft.Text(f"{v:,.0f} kg".replace(",", "."), size=16, weight=ft.FontWeight.BOLD,
-                    color=meta["cor"] if v else B.INK_SOFT)
-        txt_grupos[g] = (t, meta)
-        cards.append(card(ft.Column([
+                    color=meta["cor"] if v > 0 else B.INK_SOFT)
+        c = card(ft.Column([
             ft.Row([ft.Text(meta["emoji"], size=18), sub(I.T(meta["nome"]))], spacing=6),
             t,
-        ], spacing=2), width=158, bgcolor=B.CARD if v else B.CARD_ALT))
+        ], spacing=2), width=158, bgcolor=B.CARD if v > 0 else B.CARD_ALT)
+        txt_grupos[g] = (t, meta, c)
+        cards.append(c)
     comp = card(ft.Row([icon_btn(ft.Icons.INSIGHTS, lambda e: app.navigate("monitorar"), tip=I.T("Dashboard completo")),
                         title(I.T("Monitorar & comparar usuários"), 14),
                         ft.Container(expand=True),
@@ -146,17 +151,23 @@ def build(app):
 
     # ---- atualização ao vivo do resumo sem reconstruir a tela ----
     def atualizar(e=None):
+        # recarrega a lista de usuários do banco (pode ter mudado: novo/excluído)
+        usuarios = db.list_usuarios(con)
+        if not usuarios:
+            st["uid"] = None
+            app.refresh()
+            return
         uid = st["uid"]
         if uid is None or uid not in [x["id"] for x in usuarios]:
             uid = usuarios[0]["id"]
+            st.update(uid=uid)
         uu = next(x for x in usuarios if x["id"] == uid)
         u.update(dict(uu))
-        if st["modo"] == "mês":
-            tot = db.total_usuario(con, uid, st["ano"], st["mes"])
-            per = f"{I.meses_ab()[st['mes'] - 1]} {st['ano']}"
-        else:
-            tot = db.total_usuario(con, uid, st["ano"])
-            per = str(st["ano"])
+        dd_user.options = [ft.dropdown.Option(str(x["id"]), x["nome"]) for x in usuarios]
+        # métricas e cartões SEMPRE reconsultados com o NOVO uid (sem cache)
+        mes_ref = st["mes"] if st["modo"] == "mês" else None
+        tot = db.total_usuario(con, uid, st["ano"], mes_ref)
+        per = f"{I.meses_ab()[st['mes'] - 1]} {st['ano']}" if st["modo"] == "mês" else str(st["ano"])
         sv, lb, _rt = db.score(con, uid, st["ano"], st["mes"])
         md = db.media_pais(con, uu["pais"])
         an = db.anualizado(con, uid, st["ano"], st["mes"]) / max(1, uu["pessoas"])
@@ -167,24 +178,27 @@ def build(app):
         gc.controls[0] = gimg
         txt_total.value = I.FM("{v} kgCO₂e em {periodo}", v=f"{tot:.0f}", periodo=per)
         txt_streak.value = I.FM("🔥 {n} meses seguidos", n=_streak(con, uid))
-        grs = db.por_grupo(con, uid, st["ano"], st["mes"] if st["modo"] == "mês" else None)
-        for g, (t, meta) in txt_grupos.items():
-            v = grs.get(g, 0.0)
+        grs = db.por_grupo(con, uid, st["ano"], mes_ref)
+        for g, (t, meta, c) in txt_grupos.items():
+            v = round(grs.get(g, 0.0), 1)
             t.value = f"{v:,.0f} kg".replace(",", ".")
-            t.color = meta["cor"] if v else B.INK_SOFT
+            t.color = meta["cor"] if v > 0 else B.INK_SOFT
+            c.bgcolor = B.CARD if v > 0 else B.CARD_ALT
         dd_user.value = str(uid)
         dd_ano.value = str(st["ano"])
         mes_dd.value = str(st["mes"])
         mes_dd.visible = st["modo"] == "mês"
         preencher_hist(uid)
-        _force_update(gc, gimg, txt_total, txt_streak, *[t for t, _ in txt_grupos.values()],
+        _force_update(gc, gimg, txt_total, txt_streak,
+                      *[t for t, _, _c in txt_grupos.values()],
+                      *[_c for _t, _m, _c in txt_grupos.values()],
                       dd_user, dd_ano, mes_dd, col_hist)
 
     app._home_live = atualizar
     
     # FIX: force-propagate ALL widget values to Flet client after building.
     _force_update(dd_user, dd_ano, mes_dd, txt_total, txt_streak,
-                  *[t for t, _ in txt_grupos.values()], col_hist)
+                  *[t for t, _, _c in txt_grupos.values()], col_hist)
     
     return ft.Column([header, ft.Container(height=6), grid], scroll=ft.ScrollMode.AUTO, spacing=6)
 

@@ -82,6 +82,8 @@ _CAT = {
     "País": ("Country", "País"),
     # ---- tela Início
     "Nenhum usuário cadastrado": ("No users registered yet", "Aún no hay usuarios registrados"),
+    "Vá até a aba Usuários para criar seu primeiro perfil.": ("Go to the Users tab to create your first profile.", "Ve a la pestaña Usuarios para crear tu primer perfil."),
+    "Ir para Usuários": ("Go to Users", "Ir a Usuarios"),
     "Cadastrar usuário": ("Register a user", "Registrar usuario"),
     "🇧🇷 {pais} · {p}p": ("🇧🇷 {pais} · {p} people", "🇧🇷 {pais} · {p} personas"),
     "vs média {pais} {v} t": ("vs {pais} average {v} t", "vs promedio {pais} {v} t"),
