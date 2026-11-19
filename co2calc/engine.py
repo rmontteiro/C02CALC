@@ -6,6 +6,7 @@ Estrutura P = atividade × fator × fração de atribuição, conforme a taxonom
 anexa (planilha 'Guia'). Fatores vêm da tabela `fatores` (editável).
 """
 from . import database as db
+from . import i18n as I
 
 CASA_KWH = {"flat": "FAST_HOME_KWH_FLAT", "small": "FAST_HOME_KWH_SMALL",
             "medium": "FAST_HOME_KWH_MED", "large": "FAST_HOME_KWH_LARGE"}
@@ -91,17 +92,17 @@ def records_from_baseline(con, uid, res, brk):
     """Cria registros anuais (origem 'quick') a partir de uma estimativa salva."""
     import datetime
     ano = datetime.date.today().year
-    mapa = {"moradia": ("B1", "MORAD", "Estimativa quick: moradia"),
-            "carro": ("A1", "TRANSP", "Estimativa quick: carro"),
-            "voos": ("A3", "TRANSP", "Estimativa quick: voos"),
-            "alimentacao": ("C1", "ALIM", "Estimativa quick: alimentação"),
-            "bens_servicos": ("D", "BENS", "Estimativa quick: bens e serviços")}
+    mapa = {"moradia": ("B1", "MORAD", I.T("Estimativa quick: moradia")),
+            "carro": ("A1", "TRANSP", I.T("Estimativa quick: carro")),
+            "voos": ("A3", "TRANSP", I.T("Estimativa quick: voos")),
+            "alimentacao": ("C1", "ALIM", I.T("Estimativa quick: alimentação")),
+            "bens_servicos": ("D", "BENS", I.T("Estimativa quick: bens e serviços"))}
     n = 0
     for k, kg in brk.items():
         cod, grp, nome = mapa[k]
         con.execute("INSERT INTO registros(usuario_id,codigo,grupo,atividade,metodo,valor,unidade,fator,pessoas,co2e_kg,tipo_periodo,ano,mes,obs,origem,criado_em)"
                     " VALUES (?,?,?,?,?,1,'baseline','1.0',1,?, 'A', ?, NULL, ?, 'quick', datetime('now'))",
-                    (uid, cod, grp, nome, kg, ano, "gerado da calculadora rápida"))
+                    (uid, cod, grp, nome, kg, ano, I.T("gerado da calculadora rápida")))
         n += 1
     con.commit()
     return n

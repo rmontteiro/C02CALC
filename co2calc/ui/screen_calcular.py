@@ -8,6 +8,7 @@ from .. import branding as B
 from .. import database as db
 from .. import engine
 from .. import charts
+from .. import i18n as I
 from .widgets import card, title, sub, kv, btn, gauge_img
 
 CASAS = [("flat", "🏢 Apartamento"), ("small", "🏠 Casa pequena (1–2 quartos)"),
@@ -24,7 +25,7 @@ def build(app):
     con, st = app.con, app.state
     usuarios = db.list_usuarios(con)
     if not usuarios:
-        return card(sub("Cadastre um usuário primeiro."))
+        return card(sub(I.T("Cadastre um usuário primeiro.")))
     uid = st["uid"] or usuarios[0]["id"]
     u0 = next(x for x in usuarios if x["id"] == uid)
 
@@ -55,7 +56,7 @@ def build(app):
                               padding=ft.padding.symmetric(9, 14), border_radius=12, on_click=h)
             conts.append((val, cc))
             return cc
-        row = ft.Row([mk(v, l) for v, l in opts], wrap=True, spacing=8, run_spacing=8)
+        row = ft.Row([mk(v, I.T(l)) for v, l in opts], wrap=True, spacing=8, run_spacing=8)
         paint(False)
         return row
 
@@ -79,17 +80,17 @@ def build(app):
                             vtxt,
                             ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, on_click=up, icon_color=B.PRIMARY)], spacing=4))
 
-    ppl = mk_step("Pessoas no domicílio", "pessoas", 1, 8)
-    cur = mk_step("Voos curtos de ida-e-volta", "curtos", 0, 20)
-    lon = mk_step("Voos longos de ida-e-volta", "longos", 0, 15)
+    ppl = mk_step(I.T("Pessoas no domicílio"), "pessoas", 1, 8)
+    cur = mk_step(I.T("Voos curtos de ida-e-volta"), "curtos", 0, 20)
+    lon = mk_step(I.T("Voos longos de ida-e-volta"), "longos", 0, 15)
 
     paises = con.execute("SELECT iso, nome FROM paises ORDER BY nome").fetchall()
-    dd_pais = ft.Dropdown(label="País (define redes e médias)", width=250, value=r["pais"],
+    dd_pais = ft.Dropdown(label=I.T("País (define redes e médias)"), width=250, value=r["pais"],
                           options=[ft.dropdown.Option(p["iso"], p["nome"]) for p in paises],
                           border_color=B.GRID_LINE, focused_border_color=B.PRIMARY, border_radius=12,
                           content_padding=10, text_size=13,
                           on_change=lambda e: (r.update(pais=e.control.value), calcular(e)))
-    dd_user = ft.Dropdown(label="Calcular para", width=200, value=str(u0["id"]),
+    dd_user = ft.Dropdown(label=I.T("Calcular para"), width=200, value=str(u0["id"]),
                           options=[ft.dropdown.Option(str(x["id"]), x["nome"]) for x in usuarios],
                           border_color=B.GRID_LINE, focused_border_color=B.PRIMARY, border_radius=12,
                           content_padding=10, text_size=13,
@@ -109,22 +110,24 @@ def build(app):
         media, total = res["media_nacional"], res["total_pp"]
         score = max(0.0, min(100.0, 100 * (1.35 - total / media) / (1.35 - 0.25)))
         lbl, cor = B.banda(score)
-        gp = charts.gauge(score, lbl, f"{total/1000:.1f} tCO₂e/pessoa",
-                          f"média {res['pais']}: {media/1000:.0f} t", name="gauge_quick")
-        itens = [("🏠 Moradia", brk["moradia"]), ("🚗 Carro", brk["carro"]), ("✈️ Voos", brk["voos"]),
-                 ("🍽️ Alimentação", brk["alimentacao"]), ("🛍️ Bens & serviços", brk["bens_servicos"])]
+        gp = charts.gauge(score, lbl, f"{total/1000:.1f} " + I.T("tCO₂e/pessoa"),
+                          I.FM("média {pais}: {v} t", pais=res["pais"], v=f"{media/1000:.0f}"), name="gauge_quick")
+        itens = [(I.T("🏠 Moradia"), brk["moradia"]), (I.T("🚗 Carro"), brk["carro"]), (I.T("✈️ Voos"), brk["voos"]),
+                 (I.T("🍽️ Alimentação"), brk["alimentacao"]), (I.T("🛍️ Bens & serviços"), brk["bens_servicos"])]
         res_area.content = ft.Column([
             ft.Row([gauge_img(gp, 190),
-                    ft.Column([title(f"Sua estimativa: {total/1000:.1f} tCO₂e por pessoa/ano", 15),
-                               sub(f"{'abaixo' if res['vs_media'] < 0 else 'acima'} da média {res['pais']} em {abs(res['vs_media']):.0f}% · "
-                                   f"domicílio de {r['pessoas']}p ≈ {res['total_hogar']/1000:.1f} tCO₂e/ano"),
+                    ft.Column([title(I.FM("Sua estimativa: {v} tCO₂e por pessoa/ano", v=f"{total/1000:.1f}"), 15),
+                               sub(I.FM("{dir} da média {pais} em {pct}% · domicílio de {n}p ≈ {v} tCO₂e/ano",
+                                        dir=I.T("abaixo") if res["vs_media"] < 0 else I.T("acima"),
+                                        pais=res["pais"], pct=f"{abs(res['vs_media']):.0f}",
+                                        n=r["pessoas"], v=f"{res['total_hogar']/1000:.1f}")),
                                ft.Divider(color=B.GRID_LINE),
                                *[kv(k, f"{v:,.0f} kg".replace(",", "."), size=12.5) for k, v in itens]],
                               spacing=8, expand=True)],
                    spacing=16, vertical_alignment=ft.CrossAxisAlignment.START),
-            ft.Row([btn("Salvar baseline", salvar),
-                    btn("Gerar lançamentos anuais no histórico", gerar_regs, filled=False),
-                    btn("Ver no dashboard", lambda e: app.navigate("monitorar"), filled=False)],
+            ft.Row([btn(I.T("Salvar baseline"), salvar),
+                    btn(I.T("Gerar lançamentos anuais no histórico"), gerar_regs, filled=False),
+                    btn(I.T("Ver no dashboard"), lambda e: app.navigate("monitorar"), filled=False)],
                    wrap=True, spacing=10),
         ], spacing=12)
         res_area.visible = True
@@ -137,27 +140,26 @@ def build(app):
                     (int(dd_user.value), json.dumps(r, ensure_ascii=False),
                      json.dumps(res["breakdown_pp"]), res["total_pp"] * r["pessoas"], db.now()))
         con.commit()
-        app.toast("Baseline salva — compare anos no Monitoramento.")
+        app.toast(I.T("Baseline salva — compare anos no Monitoramento."))
 
     def gerar_regs(e):
         res = ultimo["res"]
         n = engine.records_from_baseline(con, int(dd_user.value), r, res["breakdown_pp"])
-        app.toast(f"{n} registros anuais criados (origem: calculadora).")
+        app.toast(I.FM("{n} registros anuais criados (origem: calculadora).", n=n))
 
     steps = ft.Column([
-        step("1 · Sua moradia", "Tamanho e aquecimento definem a energia do imóvel.",
+        step(I.T("1 · Sua moradia"), I.T("Tamanho e aquecimento definem a energia do imóvel."),
              ft.Column([chipset("casa", CASAS, "casa"), chipset("aq", AQS, "aq"), ppl], spacing=10)),
-        step("2 · Como você dirige", "Volume anual aproximado e tipo de veículo.",
+        step(I.T("2 · Como você dirige"), I.T("Volume anual aproximado e tipo de veículo."),
              ft.Column([chipset("drive", DRIVES, "drive"), chipset("fuel", FUELS, "fuel")], spacing=10)),
-        step("3 · Voos no último ano", "Ida e volta contam como 1 viagem (curto ≤5h, longo >5h).",
+        step(I.T("3 · Voos no último ano"), I.T("Ida e volta contam como 1 viagem (curto ≤5h, longo >5h)."),
              ft.Row([cur, lon], spacing=10, wrap=True)),
-        step("4 · Sua dieta", "Uma ideia geral já basta.", chipset("dieta", DIETAS, "dieta")),
+        step(I.T("4 · Sua dieta"), I.T("Uma ideia geral já basta."), chipset("dieta", DIETAS, "dieta")),
         ft.Row([dd_user, dd_pais], spacing=10, wrap=True),
-        btn("Calcular minha pegada ⚡", calcular),
+        btn(I.T("Calcular minha pegada ⚡"), calcular),
         res_area,
     ], spacing=12)
     return ft.Column([card(ft.Column([
-        ft.Row([gauge_img(B.ensure_assets(), 30, 30), title("Calculadora rápida")], spacing=10),
-        sub("Estimativa em 4 blocos — moradia, direção, voos e dieta; "
-            "bens & serviços calibrados pela média nacional (OECD/Defra) e fator de rede elétrica do país (IEA/Ember)."),
+        ft.Row([gauge_img(B.ensure_assets(), 30, 30), title(I.T("Calculadora rápida"))], spacing=10),
+        sub(I.T("Estimativa em 4 blocos — moradia, direção, voos e dieta; bens & serviços calibrados pela média nacional (OECD/Defra) e fator de rede elétrica do país (IEA/Ember).")),
     ], spacing=6)), steps], scroll=ft.ScrollMode.AUTO, spacing=10)

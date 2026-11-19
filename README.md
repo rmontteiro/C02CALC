@@ -3,6 +3,7 @@
 App desktop **100 % Python + SQLite** (Flet), com:
 
 * **Motor de cálculo próprio** (`co2calc/engine.py`): estimativa rápida em 4 etapas (moradia, direção, voos, dieta) + apuração detalhada por atividade, com fatores Defra/DESNZ (WTT incluso), rede elétrica por país (IEA/Ember aproximado) e médias nacionais per capita (OECD/Defra aproximado). Ver `docs/METODOLOGIA.md`.
+* **🌍 Trilingue desde o primeiro uso**: tela inicial para escolher o idioma — 🇧🇷 Português, 🇺🇸 English ou 🇦🇷 Español — com bandeiras desenhadas pelo próprio app; menus, telas, gráficos, relatórios PDF e exportações CSV seguem o idioma escolhido (trocável depois em *Usuários → Interface*).
 * **Design reconhecível**: fundo verde-menta, cards brancos arredondados com sombra suave, **gauge circular de pontuação 0–100**, cartões de tipologia com emoji (🚗 🍽 🏠 🛍), histórico de lançamentos, navegação inferior em 5 abas. Ver `docs/GUIA_DE_MARCA.md`.
 * **📚 Taxonomia de emissões**: o CO2calc usa a ***Minha Pegada — Taxonomia Mundial de Pegada de Carbono Individual*** (586 nós em 4 níveis, 470 atividades, 33 métodos, regras R01–R16, vínculo COICOP/ISO 3166). A **planilha-mestre está versionada no repositório** em [`docs/taxonomia/`](docs/taxonomia/), com **SHA-256 registrado no banco do app** e exibido na interface. Referência completa, mapa planilha→tabelas e citação sugerida em **[`docs/TAXONOMIA.md`](docs/TAXONOMIA.md)**. Verificação: `python tools/reextrair_seeds.py --check`.
 
@@ -18,10 +19,12 @@ CO2calc/
 │  ├─ charts.py            # gráficos matplotlib (PNG p/ UI e PDF)
 │  ├─ reports.py           # relatórios PDF (reportlab)
 │  ├─ seed/*.json          # taxonomia, métodos, fatores, países (do XLSX)
-│  └─ ui/                  # telas: home, lançar, calculadora, monitor, usuários
+│  ├─ i18n.py              # catálogo pt/en/es (interface, gráficos, PDF, CSV)
+│  └─ ui/                  # telas: idioma (1º uso), home, lançar, calculadora, monitor, usuários
 ├─ docs/taxonomia/         # planilha-mestre da taxonomia (.xlsx + CHECKSUMS.txt)
 ├─ tools/reextrair_seeds.py# confere/regenera os seeds a partir da planilha
-├─ assets/                 # icon_512/192, favicon, ic_launcher, co2calc.ico, SVGs
+├─ assets/                 # ícones/logos + flags/ (bandeiras BR/US/AR desenhadas)
+├─ tools/                  # gerar_bandeiras.py · reextrair_seeds.py
 ├─ data/                   # co2calc.db + gráficos gerados + relatorios/*.pdf
 ├─ tests/test_smoke.py     # sanidade de banco, engine, telas e PDF
 ├─ Iniciar_CO2calc.bat · iniciar_CO2calc.sh      # executa o app (cria venv sozinho)

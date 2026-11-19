@@ -199,6 +199,16 @@ def _demo(cur):
 
 
 # ---------- helpers ----------
+def get_ajuste(con, chave):
+    r = con.execute("SELECT valor FROM ajustes WHERE chave=?", (chave,)).fetchone()
+    return r["valor"] if r else None
+
+
+def set_ajuste(con, chave, valor):
+    con.execute("INSERT OR REPLACE INTO ajustes(chave,valor) VALUES (?,?)", (chave, valor))
+    con.commit()
+
+
 def get_fator(con, codigo):
     r = con.execute("SELECT valor,descricao,unidade,fonte FROM fatores WHERE codigo=?", (codigo,)).fetchone()
     return r["valor"] if r else None

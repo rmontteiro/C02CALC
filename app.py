@@ -16,9 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flet as ft
 from co2calc import branding as B
 from co2calc import database as db
+from co2calc import i18n as I
 from co2calc.ui import widgets as W
 from co2calc.ui import (screen_home, screen_lancar, screen_calcular,
-                        screen_monitorar, screen_usuarios)
+                        screen_monitorar, screen_usuarios, screen_idioma)
 
 ROTAS = {
     "home": ("Início", ft.Icons.SPACE_DASHBOARD_OUTLINED, ft.Icons.SPACE_DASHBOARD, screen_home),
@@ -40,7 +41,10 @@ class App:
         self.state = State(uid=None, ano=datetime.date.today().year, mes=datetime.date.today().month,
                            modo="mês", rota="home")
         self.con = db.init_db()
-        page.title = "CO2calc — pegada de carbono pessoal"
+        lang = os.environ.get("CO2CALC_LANG") or db.get_ajuste(self.con, "idioma")
+        self.lang_ready = lang in I.CODES
+        I.set_lang(lang if self.lang_ready else "pt")
+        page.title = I.T("CO2calc — pegada de carbono pessoal")
         page.theme_mode = ft.ThemeMode.LIGHT
         page.theme = W.theme()
         page.bgcolor = B.BG
@@ -61,18 +65,19 @@ class App:
             indicator_color=ft.Colors.with_opacity(0.16, B.PRIMARY),
             indicator_shape=ft.RoundedRectangleBorder(radius=14),
             destinations=[
-                ft.NavigationBarDestination(icon=ROTAS[r][1], selected_icon=ROTAS[r][2], label=ROTAS[r][0])
+                ft.NavigationBarDestination(icon=ROTAS[r][1], selected_icon=ROTAS[r][2], label=I.T(ROTAS[r][0]))
                 for r in ROTAS],
             on_change=self._nav_change,
         )
+        self.hdr_route = ft.Text("  ·  " + I.T(ROTAS[self.state["rota"]][0]), size=14, color=B.INK_SOFT,
+                                 weight=ft.FontWeight.W_600)
         page.add(
             ft.Container(
                 ft.Row([W.img64(B.ensure_assets(), 40, 40),
                         ft.Text("CO", size=22, weight=ft.FontWeight.BOLD, color=B.PRIMARY_DARK),
                         ft.Text("2", size=14, weight=ft.FontWeight.BOLD, color=B.PRIMARY_DARK),
                         ft.Text("calc", size=22, weight=ft.FontWeight.W_300, color=B.PRIMARY),
-                        ft.Text("  ·  " + (ROTAS[self.state["rota"]][0]), size=14, color=B.INK_SOFT,
-                                weight=ft.FontWeight.W_600)],
+                        self.hdr_route],
                        spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 padding=ft.padding.only(left=18, top=10),
                 on_click=lambda e: self.navigate("home")),
@@ -80,6 +85,33 @@ class App:
                 ft.Column([self.body, ft.Container(height=4), self.nav], expand=True, spacing=0),
                 expand=True),
         )
+        if self.lang_ready:
+            self.refresh()
+        else:
+            self.show_language_gate()
+
+    def show_language_gate(self):
+        self.nav.visible = False
+        self.body.content = screen_idioma.build(self)
+        self.page.update()
+
+    def _set_nav_labels(self):
+        for d, r in zip(self.nav.destinations, list(ROTAS)):
+            d.label = I.T(ROTAS[r][0])
+
+    def set_language(self, code):
+        db.set_ajuste(self.con, "idioma", code)
+        I.set_lang(code)
+        self.lang_ready = True
+        self.page.title = I.T("CO2calc — pegada de carbono pessoal")
+        self._set_nav_labels()
+        self.nav.visible = True
+        self.state.update(rota="home")
+        self.refresh()
+
+    def apply_language(self):
+        self.page.title = I.T("CO2calc — pegada de carbono pessoal")
+        self._set_nav_labels()
         self.refresh()
 
     def _nav_change(self, e):
@@ -92,6 +124,7 @@ class App:
     def refresh(self):
         rota = self.state["rota"]
         self.nav.selected_index = list(ROTAS).index(rota)
+        self.hdr_route.value = "  ·  " + I.T(ROTAS[rota][0])
         self.body.content = ROTAS[rota][3].build(self)
         self.page.update()
 

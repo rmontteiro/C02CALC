@@ -6,6 +6,7 @@ import flet as ft
 from .. import branding as B
 from .. import database as db
 from .. import rotulos_fatores as RF
+from .. import i18n as I
 from .widgets import card, title, sub, btn, icon_btn, num_field, kv
 
 COR_USUARIO = [B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
@@ -16,27 +17,28 @@ def build(app):
     usuarios = db.list_usuarios(con)
     paises = con.execute("SELECT iso, nome FROM paises ORDER BY nome").fetchall()
 
-    tf_nome = num_field("Nome", "", width=220, keyboard_type=ft.KeyboardType.TEXT)
-    dd_pais = ft.Dropdown(label="País", width=220, value="BR",
+    tf_nome = num_field(I.T("Nome"), "", width=220, keyboard_type=ft.KeyboardType.TEXT)
+    dd_pais = ft.Dropdown(label=I.T("País"), width=220, value="BR",
                           options=[ft.dropdown.Option(p["iso"], p["nome"]) for p in paises],
                           border_color=B.GRID_LINE, focused_border_color=B.PRIMARY, border_radius=12,
                           content_padding=10, text_size=13)
-    tf_pp = num_field("Pessoas no domicílio", "1", width=170)
-    tf_obs = num_field("Observação", "", width=220, keyboard_type=ft.KeyboardType.TEXT)
+    tf_pp = num_field(I.T("Pessoas no domicílio"), "1", width=170)
+    tf_obs = num_field(I.T("Observação"), "", width=220, keyboard_type=ft.KeyboardType.TEXT)
 
     def salvar_usuario(e):
         nome = (tf_nome.value or "").strip()
         if not nome:
-            app.toast("Informe um nome.")
+            app.toast(I.T("Informe um nome."))
             return
         try:
             db.add_usuario(con, nome, dd_pais.value, int(tf_pp.value or 1), tf_obs.value,
                            COR_USUARIO[len(usuarios) % len(COR_USUARIO)])
-            app.toast(f"Usuário “{nome}” criado.")
+            app.toast(I.FM("Usuário “{nome}” criado.", nome=nome))
             tf_nome.value = ""; tf_obs.value = ""
             app.refresh()
         except Exception as ex:
-            app.toast("Já existe um usuário com esse nome." if "UNIQUE" in str(ex).upper() else f"Erro: {ex}")
+            app.toast(I.T("Já existe um usuário com esse nome.") if "UNIQUE" in str(ex).upper()
+                      else I.FM("Erro: {e}", e=ex))
 
     def excluir(uid, nome):
         con.execute("DELETE FROM registros WHERE usuario_id=?", (uid,))
@@ -45,7 +47,7 @@ def build(app):
         con.commit()
         if st.get("uid") == uid:
             st.update(uid=None)
-        app.toast(f"“{nome}” removido com seus dados.")
+        app.toast(I.FM("“{nome}” removido com seus dados.", nome=nome))
         app.refresh()
 
     linhas = []
@@ -56,12 +58,13 @@ def build(app):
             ft.CircleAvatar(content=ft.Text(x["nome"][0], weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                             bgcolor=x["cor"] or B.PRIMARY),
             ft.Column([ft.Text(x["nome"], size=14, weight=ft.FontWeight.BOLD),
-                       sub(f"{(nome_pais or {'nome': x['pais']})['nome']} · {x['pessoas']}p · "
-                           f"{n['c']} lançamentos · {n['s']:,.0f} kg".replace(",", ".") +
-                           (f" · {x['obs']}" if x["obs"] else ""))], expand=True, spacing=2),
-            icon_btn(ft.Icons.PERSON_ADD_ALT, lambda e, uid=x["id"]: (st.update(uid=uid), app.navigate("home")), tip="Selecionar"),
+                       sub(I.FM("{pais} · {p} pessoas · {c} registros · {sz} kg",
+                                pais=(nome_pais or {"nome": x["pais"]})["nome"], p=x["pessoas"], c=n["c"],
+                                sz=f"{n['s']:,.0f}".replace(",", ".")) + (f" · {x['obs']}" if x["obs"] else ""))],
+                          expand=True, spacing=2),
+            icon_btn(ft.Icons.PERSON_ADD_ALT, lambda e, uid=x["id"]: (st.update(uid=uid), app.navigate("home")), tip=I.T("Selecionar")),
             icon_btn(ft.Icons.DELETE_FOREVER_OUTLINED, lambda e, uid=x["id"], nm=x["nome"]: excluir(uid, nm),
-                     color=B.ACCENT_4, tip="Excluir usuário e dados"),
+                     color=B.ACCENT_4, tip=I.T("Excluir usuário e dados")),
         ], spacing=12)))
 
     # ---- editores de fatores ----
@@ -71,8 +74,8 @@ def build(app):
         "WHERE valor IS NOT NULL").fetchall())
 
     sobre = ft.Column([], spacing=6)
-    painel_sobre = card(ft.Column([title("📖 Sobre este fator"),
-                                   sub("o que significa, onde o app usa e de onde vem o valor selecionado"),
+    painel_sobre = card(ft.Column([title(I.T("📖 Sobre este fator")),
+                                   sub(I.T("o que significa, onde o app usa e de onde vem o valor selecionado")),
                                    sobre], spacing=8), expand=2)
 
     def carregar_fator(e=None):
@@ -83,11 +86,11 @@ def build(app):
         d = dict(f)
         sobre.controls = [
             ft.Text(RF.rotulo(f["codigo"], d), size=12.5, weight=ft.FontWeight.W_600, color=B.INK),
-            sub(RF.GRUPO_NOME.get(f["grupo"], f["grupo"] or "")),
+            RF.grupo_nome(f["grupo"]),
             ft.Text(RF.explicacao(f["codigo"], d), size=11.5, color=B.INK_SOFT, selectable=True),
-            kv("Unidade do valor", RF.unidade_texto(f["unidade"]), size=10.5),
-            kv("Fonte registrada", f["fonte"] or "—", size=10.5),
-            kv("Código interno", f["codigo"], size=10.5),
+            kv(I.T("Unidade do valor"), RF.unidade_texto(f["unidade"]), size=10.5),
+            kv(I.T("Fonte registrada"), f["fonte"] or "—", size=10.5),
+            kv(I.T("Código interno"), f["codigo"], size=10.5),
         ]
         if tf_fval.page:
             tf_fval.update()
@@ -98,7 +101,7 @@ def build(app):
         try:
             v = float(tf_fval.value)
         except Exception:
-            estado["msg"].value = "valor inválido"
+            estado["msg"].value = I.T("valor inválido")
             estado["msg"].update()
             return
         con.execute("UPDATE fatores SET valor=? WHERE codigo=?", (v, dd_f.value))
@@ -109,21 +112,20 @@ def build(app):
             iso = dd_f.value[6:]
             con.execute("UPDATE paises SET media=? WHERE iso=?", (v, iso))
         con.commit()
-        estado["msg"].value = f"Fator atualizado: {RF.rotulo(dd_f.value)} → {v:g} ✓"
+        estado["msg"].value = I.FM("Fator atualizado: {r} → {v} ✓", r=RF.rotulo(dd_f.value), v=f"{v:g}")
         estado["msg"].update()
         carregar_fator()
 
-    dd_f = ft.Dropdown(label="Fator de emissão (nome completo)", width=430,
+    dd_f = ft.Dropdown(label=I.T("Fator de emissão (nome completo)"), width=430,
                        options=[ft.dropdown.Option(key=r["codigo"], text=RF.rotulo(r["codigo"], dict(r)))
                                 for r in fat_rows],
                        border_color=B.GRID_LINE, focused_border_color=B.PRIMARY, border_radius=12,
                        content_padding=10, text_size=12, on_change=carregar_fator)
-    tf_fval = num_field("Novo valor", "", width=140)
+    tf_fval = num_field(I.T("Novo valor"), "", width=140)
     painel_fat = card(ft.Column([
-        ft.Row([title("⚙️ Editar fatores de emissão"),
-                sub("todos os fatores do cálculo, incluindo a rede elétrica e a média nacional do seu país — "
-                    "ao gravar, tudo é recalculado no app")], spacing=10, wrap=True),
-        ft.Row([dd_f, tf_fval, btn("Gravar fator", gravar_fator, small=True)], wrap=True, spacing=10),
+        ft.Row([title(I.T("⚙️ Editar fatores de emissão")),
+                sub(I.T("todos os fatores do cálculo, incluindo a rede elétrica e a média nacional do seu país — ao gravar, tudo é recalculado no app"))], spacing=10, wrap=True),
+        ft.Row([dd_f, tf_fval, btn(I.T("Gravar fator"), gravar_fator, small=True)], wrap=True, spacing=10),
         estado["msg"],
     ], spacing=10), expand=3)
     if fat_rows:
@@ -142,29 +144,48 @@ def build(app):
                            "JOIN usuarios u ON u.id=r.usuario_id ORDER BY r.ano, r.mes, u.nome").fetchall()
         with open(p, "w", newline="", encoding="utf-8-sig") as fh:
             wr = csv.writer(fh, delimiter=";")
-            wr.writerow(["usuario", "codigo", "grupo", "atividade", "valor", "unidade", "fator",
-                         "pessoas", "co2e_kg", "tipo", "ano", "mes", "origem"])
+            wr.writerow([I.T(c) for c in ["usuario", "codigo", "grupo", "atividade", "valor", "unidade", "fator",
+                                                    "pessoas", "co2e_kg", "tipo", "ano", "mes", "origem"]])
             for r in rows:
                 wr.writerow(list(r.values()))
-        app.toast(f"CSV exportado: {p}")
+        app.toast(I.FM("CSV exportado: {p}", p=p))
 
     info = card(ft.Column([
-        title("🗄️ Banco de dados local"),
-        kv("Arquivo SQLite", str(db.DB_PATH), size=11.5),
-        kv("Taxonomia (referência-mestre)",
+        title(I.T("🗄️ Banco de dados local")),
+        kv(I.T("Arquivo SQLite"), str(db.DB_PATH), size=11.5),
+        kv(I.T("Taxonomia (referência-mestre)"),
            "Minha Pegada — Mundial · 586 nós (A–J) · 470 atividades · 33 métodos · R01–R16 · docs/TAXONOMIA.md", size=10.5),
-        kv("Versão da planilha (SHA-256)",
+        kv(I.T("Versão da planilha (SHA-256)"),
            str((con.execute("SELECT valor FROM ajustes WHERE chave='taxonomia_sha256'").fetchone() or {"valor": "n/d"})["valor"])[:32] + "…", size=10.5),
-        kv("Portabilidade", "mesmo esquema SQLite será usado no app Android (roadmap em docs/)", size=11.5),
-        ft.Row([btn("Exportar lançamentos (CSV)", lambda e: exportar_csv(e), filled=False, icon=ft.Icons.DESCRIPTION)],
+        kv(I.T("Portabilidade"), I.T("mesmo esquema SQLite será usado no app Android (roadmap em docs/)"), size=11.5),
+        ft.Row([btn(I.T("Exportar lançamentos (CSV)"), lambda e: exportar_csv(e), filled=False, icon=ft.Icons.DESCRIPTION)],
                spacing=8),
     ], spacing=8))
 
+    # ---- idioma da interface ----
+    dd_lang = ft.Dropdown(label=I.T("Idioma do app — menus, telas, gráficos e relatórios"), width=280,
+                          value=I.get_lang(),
+                          options=[ft.dropdown.Option(l["code"], l["rotulo"]) for l in I.LANGS],
+                          border_color=B.GRID_LINE, focused_border_color=B.PRIMARY, border_radius=12,
+                          content_padding=10, text_size=12)
+
+    def trocar_idioma(e):
+        db.set_ajuste(con, "idioma", dd_lang.value)
+        I.set_lang(dd_lang.value)
+        app.toast(I.FM("Idioma alterado para {l}", l=I.nome_idioma()))
+        app.apply_language()
+
+    lang_card = card(ft.Column([
+        title(I.T("🌐 Interface")),
+        sub(I.T("Idioma do app — menus, telas, gráficos e relatórios")),
+        ft.Row([dd_lang, btn(I.T("Aplicar idioma"), trocar_idioma, icon=ft.Icons.LANGUAGE)],
+               wrap=True, spacing=10)], spacing=8))
+
     form = card(ft.Column([
-        title("➕ Novo usuário"),
-        sub("O app aceita múltiplos usuários/perfis; cada um guarda seu histórico mensal e anual."),
+        title(I.T("➕ Novo usuário")),
+        sub(I.T("O app aceita múltiplos usuários/perfis; cada um guarda seu histórico mensal e anual.")),
         ft.Row([tf_nome, dd_pais, tf_pp], wrap=True, spacing=10),
-        ft.Row([tf_obs, btn("Cadastrar", salvar_usuario, icon=ft.Icons.PERSON_ADD)], wrap=True, spacing=10),
+        ft.Row([tf_obs, btn(I.T("Cadastrar"), salvar_usuario, icon=ft.Icons.PERSON_ADD)], wrap=True, spacing=10),
     ], spacing=10))
 
-    return ft.Column([form, *linhas, linha_fatores, info], scroll=ft.ScrollMode.AUTO, spacing=10)
+    return ft.Column([form, lang_card, *linhas, linha_fatores, info], scroll=ft.ScrollMode.AUTO, spacing=10)
