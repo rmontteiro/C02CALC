@@ -40,15 +40,36 @@ def build(app):
             app.toast(I.T("Já existe um usuário com esse nome.") if "UNIQUE" in str(ex).upper()
                       else I.FM("Erro: {e}", e=ex))
 
-    def excluir(uid, nome):
-        con.execute("DELETE FROM registros WHERE usuario_id=?", (uid,))
-        con.execute("DELETE FROM baselines WHERE usuario_id=?", (uid,))
-        con.execute("DELETE FROM usuarios WHERE id=?", (uid,))
-        con.commit()
+    def _exec_excluir(uid, nome):
+        db.del_usuario(con, uid)
         if st.get("uid") == uid:
             st.update(uid=None)
         app.toast(I.FM("“{nome}” removido com seus dados.", nome=nome))
         app.refresh()
+
+    def excluir(uid, nome):
+        """Exclusão com confirmação (antes o clique único não surtia efeito
+        visível e o usuário não podia ser removido)."""
+        def fechar(e=None):
+            try:
+                page.close(dlg)
+            except Exception:
+                pass
+        sim = btn(I.T("Excluir"), lambda e: (_exec_excluir(uid, nome), fechar()), icon=ft.Icons.DELETE_FOREVER)
+        sim.focus()
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(I.T("Excluir usuário?"), size=16, weight=ft.FontWeight.BOLD),
+            content=ft.Text(I.FM("Esta ação remove “{nome}” e todos os seus lançamentos. Não pode ser desfeita.", nome=nome),
+                            size=13, color=B.INK_SOFT),
+            actions=[btn(I.T("Cancelar"), fechar, filled=False, color=B.PRIMARY), sim],
+            actions_alignment=ft.MainAxisAlignment.END,
+            shape=ft.RoundedRectangleBorder(radius=16),
+        )
+        try:
+            page.open(dlg)
+        except Exception:
+            _exec_excluir(uid, nome)
 
     linhas = []
     for x in usuarios:

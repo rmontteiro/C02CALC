@@ -131,7 +131,10 @@ class App:
         self.nav.selected_index = list(ROTAS).index(rota)
         self.hdr_route.value = "  ·  " + I.T(ROTAS[rota][0])
         self.body.content = ROTAS[rota][3].build(self)
-        self.page.update()
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def toast(self, msg):
         snack = ft.SnackBar(ft.Text(msg, size=13), bgcolor=B.PRIMARY_DARK, action="OK")
