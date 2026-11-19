@@ -10,7 +10,6 @@ from .widgets import (card, title, sub, kv, dropdown, seg, btn, icon_btn, img64 
 
 GRP_ORDER = ["TRANSP", "MORAD", "ALIM", "BENS", "SERV", "RESID"]
 
-
 def _force_update(*ctrls):
     """Reenvia todos os atributos dos controles ao cliente mesmo sem mudanças
     locais (workaround p/ bug do Flet 0.28.x em que page.update() após trocar
@@ -25,7 +24,6 @@ def _force_update(*ctrls):
             c.update()
         except Exception:
             pass
-
 
 def build(app):
     con, st = app.con, app.state
@@ -147,15 +145,12 @@ def build(app):
     ])
 
     # ---- atualização ao vivo do resumo sem reconstruir a tela ----
-    # (corrige o dashboard estático: ao trocar usuário/ano/mês/modo no topo,
-    # os cartões por categoria, gauge, streak e histórico são re-renderizados
-    # na hora, sem depender de page.update() completo)
     def atualizar(e=None):
         uid = st["uid"]
         if uid is None or uid not in [x["id"] for x in usuarios]:
             uid = usuarios[0]["id"]
         uu = next(x for x in usuarios if x["id"] == uid)
-        u.update(dict(uu))             # referência do usuário selecionado (cabeçalho/histórico)
+        u.update(dict(uu))
         if st["modo"] == "mês":
             tot = db.total_usuario(con, uid, st["ano"], st["mes"])
             per = f"{I.meses_ab()[st['mes'] - 1]} {st['ano']}"
@@ -186,16 +181,18 @@ def build(app):
                       dd_user, dd_ano, mes_dd, col_hist)
 
     app._home_live = atualizar
+    
+    # FIX: force-propagate ALL widget values to Flet client after building.
+    _force_update(dd_user, dd_ano, mes_dd, txt_total, txt_streak,
+                  *[t for t, _ in txt_grupos.values()], col_hist)
+    
     return ft.Column([header, ft.Container(height=6), grid], scroll=ft.ScrollMode.AUTO, spacing=6)
-
 
 def datetime_year():
     import datetime
     return datetime.date.today().year
 
-
 B_MONTHS = db.MONTHS
-
 
 def _streak(con, uid):
     """meses consecutivos (a partir do último com dados) com lançamentos."""
