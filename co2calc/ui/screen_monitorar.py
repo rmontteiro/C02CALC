@@ -256,9 +256,14 @@ def _export_usuario(app):
     u = ctx["con"].execute("SELECT nome FROM usuarios WHERE id=?", (uid,)).fetchone()
     nome = (u["nome"] if u else "usuario").replace(" ", "_")
     ano = int(ctx["ano"])
+    # BUGFIX: o relatório agora reproduz TODOS os gráficos do dashboard
+    # (tendência mensal, gauge, rosca, barras de tipologia e comparativo),
+    # não apenas a tabela e as colunas empilhadas.
+    ids_rel, grupos = list(ctx["uids"]), list(ctx["sel_grupos"])
 
     def gerador(caminho):
-        reports.relatorio_usuario(ctx["con"], uid, ano, caminho=caminho)
+        reports.relatorio_usuario(ctx["con"], uid, ano, caminho=caminho,
+                                  uids=ids_rel, grupos=grupos)
 
     app.salvar_pdf(gerador, f"CO2calc_{nome}_{ano}.pdf")
 

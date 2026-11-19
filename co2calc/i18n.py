@@ -334,6 +334,11 @@ _CAT = {
         "aplicados sobre la Taxonomía Mundial de Huella de Carbono Individual (sectores A–J) según la planilla adjunta. "
         "Los valores son estimaciones auditables por registro; fórmula: E = actividad × factor ÷ reparto de personas."),
     "Comparativo de usuários — {ano}": ("User comparison — {ano}", "Comparativa entre usuarios — {ano}"),
+    "Gráficos do dashboard": ("Dashboard charts", "Gráficos del panel"),
+    "Todos · {n} usuários": ("All · {n} users", "Todos · {n} usuarios"),
+    "Tendência mensal — {n} usuários · {ano}": (
+        "Monthly trend — {n} users · {ano}", "Tendencia mensual — {n} usuarios · {ano}"),
+    "média nacional {v} t/ano": ("national average {v} t/yr", "promedio nacional {v} t/año"),
     "Emissões mensais consolidadas por tipologia · {nomes}": (
         "Consolidated monthly emissions by typology · {nomes}", "Emisiones mensales consolidadas por tipología · {nomes}"),
     "Pessoas": ("People", "Personas"),

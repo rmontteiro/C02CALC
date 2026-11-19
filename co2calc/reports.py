@@ -48,13 +48,44 @@ def _header(doc, ss, titulo, sub):
     doc.append(Spacer(1, 4 * mm))
 
 
-def relatorio_usuario(con, uid, ano, mes=None, caminho=None):
+def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=None):
+    """Relatório de usuário. Quando `uids` (lista) é informado, o relatório é
+    CONSOLIDADO e reproduz todos os gráficos do dashboard Monitorar:
+    tendência mensal (agregado + segmentado), composição (rosca), tipologia
+    (barras) e comparativo entre usuários — antes saía apenas a tabela e o
+    gráfico de colunas empilhadas."""
+    multi = bool(uids) and len(uids) > 1
     u = con.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
     st = _styles()
     os.makedirs(OUT_DIR, exist_ok=True)
     periodo = f"{mes:02d}/{ano}" if mes else str(ano)
     tag = periodo.replace("/", "-")
     caminho = caminho or os.path.join(OUT_DIR, f"CO2calc_{u['nome'].replace(' ','_')}_{periodo.replace('/','-')}.pdf")
+    CORES_USUARIO = [B.PRIMARY, B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
+
+    def _nome_de(i):
+        r = con.execute("SELECT nome FROM usuarios WHERE id=?", (i,)).fetchone()
+        return r["nome"] if r else f"#{i}"
+
+    # ---- agregações sobre o conjunto de usuários do relatório ----
+    ids_rel = list(dict.fromkeys(uids or [uid]))
+    def _agg_grupos():
+        tot = {}
+        for i in ids_rel:
+            for g, v in db.por_grupo(con, i, ano, mes).items():
+                tot[g] = tot.get(g, 0.0) + v
+        if grupos:
+            gs = set(grupos)
+            tot = {g: v for g, v in tot.items() if g in gs}
+        return tot
+    def _agg_serie():
+        agg = {}
+        for i in ids_rel:
+            for m, v in db.serie_mensal(con, i, ano).items():
+                if m:
+                    agg[m] = agg.get(m, 0.0) + v
+        return agg
+
     doc = []
     score_v, lbl, ratio = db.score(con, uid, ano, mes or 12)
     fmt_dt = {"pt": "%d/%m/%Y %H:%M", "en": "%m/%d/%Y %I:%M %p", "es": "%d/%m/%Y %H:%M"}[I.get_lang()]
@@ -77,12 +108,46 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None):
         ("ROWBACKGROUNDS",(1,0),(1,-1),[HexColor("#FFFFFF"), HexColor(B.CARD_ALT)]), ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
     doc.append(t); doc.append(Spacer(1, 4*mm))
 
-    gr = db.por_grupo(con, uid, ano, mes)
+    # ---- gráficos do dashboard Monitorar (todos, não só rosca/barras) ----
+    gr = _agg_grupos() if multi else db.por_grupo(con, uid, ano, mes)
+
+    doc.append(Paragraph(I.T("Gráficos do dashboard"), st["H"]))
+
+    # 1) Tendência mensal — agregado + segmentado por usuário (igual ao dashboard)
+    serie = _agg_serie() if multi else {m: v for m, v in db.serie_mensal(con, uid, ano).items() if m}
+    series = None
+    if multi:
+        nome_agg = I.FM("Todos · {n} usuários", n=len(ids_rel))
+        series = [(nome_agg, B.PRIMARY, serie)]
+        for i, u2 in enumerate(ids_rel):
+            sm = {m: v for m, v in db.serie_mensal(con, u2, ano).items() if m}
+            series.append((_nome_de(u2), CORES_USUARIO[i % len(CORES_USUARIO)], sm))
+    titulo_tr = I.FM("Tendência mensal — {nome} · {ano}",
+                     nome=(I.FM("{n} usuários", n=len(ids_rel)) if multi else u["nome"]), ano=str(ano))
+    p_tr = charts.line_trend(serie, titulo_tr, name=f"rep_tr_{tag}_{ids_rel[0]}", series=series)
+    doc.append(RLImage(p_tr, width=165 * mm, height=78 * mm)); doc.append(Spacer(1, 3 * mm))
+
+    # 2) Gauge de score (mesmo painel do dashboard/início)
+    media = db.media_pais(con, u["pais"])
+    an = db.anualizado(con, uid, ano, mes or 12) / max(1, u["pessoas"])
+    p_gg = charts.gauge(score_v, lbl, f"{an:,.0f} kg".replace(",", "."),
+                        I.FM("média nacional {v} t/ano", v=f"{media:.2f}"),
+                        name=f"rep_gg_{tag}_{uid}")
+    doc.append(RLImage(p_gg, width=62 * mm, height=62 * mm)); doc.append(Spacer(1, 3 * mm))
+
+    # 3) Rosca (composição) + 4) barras horizontais (tipologia) lado a lado
     p1 = charts.donut(gr, I.T("Composição por tipologia"), name=f"_d_{uid}_{tag}")
     p2 = charts.bars_grupos(gr, I.T("kgCO₂e por tipologia"), name=f"_b_{uid}_{tag}")
     tbl = Table([[RLImage(p1, width=82*mm, height=60*mm), RLImage(p2, width=82*mm, height=60*mm)]])
     tbl.setStyle(TableStyle([("ALIGN", (0,0),(-1,-1), "CENTER"), ("VALIGN", (0,0),(-1,-1), "TOP")]))
-    doc.append(tbl)
+    doc.append(tbl); doc.append(Spacer(1, 3 * mm))
+
+    # 5) Comparativo entre usuários (colunas empilhadas) — se consolidado
+    if multi:
+        matriz = db.comparativo_usuarios(con, ano, grupos)
+        nomes = [_nome_de(i) for i in ids_rel]
+        p_cp = charts.comp_usuarios(matriz, ids_rel, nomes, name=f"rep_cp_{tag}")
+        doc.append(RLImage(p_cp, width=165 * mm, height=82 * mm)); doc.append(Spacer(1, 3 * mm))
 
     doc.append(Paragraph(I.T("Lançamentos do período"), st["H"]))
     q = ("SELECT atividade, grupo, valor, unidade, co2e_kg, CASE WHEN tipo_periodo='A' THEN 'anual' ELSE 'mensal' END tp"
@@ -120,6 +185,19 @@ def relatorio_comparativo(con, uids, ano, grupos=None, caminho=None):
     doc = []
     _header(doc, st, I.FM("Comparativo de usuários — {ano}", ano=ano),
             I.FM("Emissões mensais consolidadas por tipologia · {nomes}", nomes=", ".join(nomes)))
+    # Tendência mensal agregada + segmentada por usuário (igual ao dashboard)
+    CORES_USUARIO = [B.PRIMARY, B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
+    agg = {}
+    series = []
+    for i, u2 in enumerate(uids):
+        sm = {m: v for m, v in db.serie_mensal(con, u2, ano).items() if m}
+        series.append((nomes[i], CORES_USUARIO[i % len(CORES_USUARIO)], sm))
+        for m, v in sm.items():
+            agg[m] = agg.get(m, 0.0) + v
+    series.insert(0, (I.FM("Todos · {n} usuários", n=len(uids)), B.PRIMARY, agg))
+    p_tr = charts.line_trend(agg, I.FM("Tendência mensal — {n} usuários · {ano}", n=len(uids), ano=str(ano)),
+                             name=f"rep_ctr_{ts}", series=series)
+    doc.append(RLImage(p_tr, width=165*mm, height=78*mm)); doc.append(Spacer(1, 3*mm))
     p = charts.comp_usuarios(matriz, uids, nomes, name=f"_c_{ts}")
     doc.append(RLImage(p, width=165*mm, height=82*mm)); doc.append(Spacer(1, 4*mm))
     data = [[I.T("Usuário"), I.T("País"), I.T("Pessoas"), I.T("Total ano (kgCO₂e)"), I.T("tCO₂e/per capita"), I.T("Score"), I.T("Classificação")]]
