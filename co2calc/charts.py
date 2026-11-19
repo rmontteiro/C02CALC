@@ -45,12 +45,25 @@ def gauge(score_val, label, total_txt, sub_txt, name="gauge"):
     return _save(fig, name + ".png")
 
 
-def line_trend(serie_meses, titulo="Tendência mensal (kgCO₂e)", name="trend", outra=None, media=None):
+def line_trend(serie_meses, titulo="Tendência mensal (kgCO₂e)", name="trend", outra=None, media=None,
+               series=None):
+    """series: [(nome, cores, {mes: kg})] → plota cada usuário individualmente
+    (bugfix: o gráfico mostrava apenas um usuário enquanto os demais painéis
+    agregavam/segmentavam todos)."""
     fig, ax = plt.subplots(figsize=(6.4, 3.0))
-    vals = [serie_meses.get(m, None) for m in range(1, 13)]
-    xs = [m for m, v in enumerate(vals, 1) if v is not None]
-    ys = [v for v in vals if v is not None]
-    ax.plot(xs, ys, marker="o", lw=2.2, color=B.PRIMARY, zorder=3)
+    multi = bool(series and len(series) > 1)
+    if series:
+        for nome, cor, sm in series:
+            sxs = [m for m in range(1, 13) if sm.get(m) is not None]
+            sys_ = [sm[m] for m in sxs]
+            if not sxs:
+                continue
+            ax.plot(sxs, sys_, marker="o", ms=3.5, lw=1.6, color=cor, zorder=3, label=nome)
+    else:
+        vals = [serie_meses.get(m, None) for m in range(1, 13)]
+        xs = [m for m, v in enumerate(vals, 1) if v is not None]
+        ys = [v for v in vals if v is not None]
+        ax.plot(xs, ys, marker="o", lw=2.2, color=B.PRIMARY, zorder=3)
     if outra:
         xs2 = [m for m, v in ((m, outra.get(m)) for m in range(1, 13)) if v is not None]
         ys2 = [v for v in ((m, outra.get(m)) for m in range(1, 13)) if v is not None]
@@ -61,8 +74,9 @@ def line_trend(serie_meses, titulo="Tendência mensal (kgCO₂e)", name="trend",
     ax.set_xticks(range(1, 13)); ax.set_xticklabels(I.meses_ab(), fontsize=7)
     ax.set_ylabel("kgCO₂e")
     ax.set_title(I.T(titulo))
-    if outra:
-        ax.legend(frameon=False, fontsize=8)
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(handles, labels, frameon=False, fontsize=7.5, ncol=2 if multi else 1)
     fig.tight_layout()
     return _save(fig, name + ".png")
 

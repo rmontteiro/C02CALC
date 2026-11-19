@@ -44,32 +44,43 @@ def build(app):
         db.del_usuario(con, uid)
         if st.get("uid") == uid:
             st.update(uid=None)
+        # limpa seleções obsoletas do dashboard (Monitorar)
+        mu = st.get("monitor_uids")
+        if mu is not None:
+            mu.discard(str(uid))
         app.toast(I.FM("“{nome}” removido com seus dados.", nome=nome))
         app.refresh()
 
     def excluir(uid, nome):
-        """Exclusão com confirmação (antes o clique único não surtia efeito
-        visível e o usuário não podia ser removido)."""
+        """Exclusão com confirmação. BUGFIX: usava `page` (inexistente neste
+        escopo → NameError silencioso no try/except que engolia a ação); agora
+        usa app.page e o diálogo abre corretamente."""
+        page = app.page
+
         def fechar(e=None):
             try:
                 page.close(dlg)
             except Exception:
                 pass
-        sim = btn(I.T("Excluir"), lambda e: (_exec_excluir(uid, nome), fechar()), icon=ft.Icons.DELETE_FOREVER)
-        sim.focus()
+
+        def confirmar(e):
+            fechar()
+            _exec_excluir(uid, nome)
+
         dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text(I.T("Excluir usuário?"), size=16, weight=ft.FontWeight.BOLD),
             content=ft.Text(I.FM("Esta ação remove “{nome}” e todos os seus lançamentos. Não pode ser desfeita.", nome=nome),
                             size=13, color=B.INK_SOFT),
-            actions=[btn(I.T("Cancelar"), fechar, filled=False, color=B.PRIMARY), sim],
+            actions=[btn(I.T("Cancelar"), fechar, filled=False, color=B.PRIMARY),
+                     btn(I.T("Excluir"), confirmar, icon=ft.Icons.DELETE_FOREVER)],
             actions_alignment=ft.MainAxisAlignment.END,
             shape=ft.RoundedRectangleBorder(radius=16),
         )
         try:
             page.open(dlg)
-        except Exception:
-            _exec_excluir(uid, nome)
+        except Exception as ex:
+            app.toast(I.FM("Erro ao abrir confirmação: {e}", e=ex))
 
     linhas = []
     for x in usuarios:

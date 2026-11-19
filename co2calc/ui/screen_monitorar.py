@@ -13,27 +13,96 @@ B_MONTHS = db.MONTHS
 GRPS = ["TRANSP", "MORAD", "ALIM", "BENS", "SERV", "RESID", "OUTROS", "COLETIVO"]
 
 
+CORES_USUARIO = [B.PRIMARY, B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
+
+
+def _safe_build(app):
+    """Isola falhas de render por seção (gráficos/DB) — a aba nunca mais fica
+    em branco; o trecho defeituoso é substituído por um aviso e o traceback é
+    gravado em data/erro_monitorar.log."""
+    import traceback
+    partes = []
+    try:
+        partes.append(_filtros(app))
+    except Exception as ex:
+        _log_err(ex); partes.append(card(sub(I.FM("⚠️ filtros indisponíveis: {e}", e=ex))))
+    for key, fn in (("trend", _sec_trend), ("donut", _sec_donut), ("bars", _sec_bars),
+                    ("comp", _sec_comp), ("tbl", _sec_tbl), ("hist", _sec_hist)):
+        try:
+            w = fn(app)
+            if w is not None:
+                partes.append(w)
+        except Exception as ex:
+            _log_err(ex); partes.append(card(sub(I.FM("⚠️ gráfico indisponível: {e}", e=ex))))
+    try:
+        partes.append(_export_bar(app))
+    except Exception as ex:
+        _log_err(ex)
+    return ft.Column(partes, scroll=ft.ScrollMode.AUTO, spacing=10)
+
+
+def _log_err(ex):
+    import traceback, os
+    try:
+        from ..database import DATA_DIR
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(os.path.join(DATA_DIR, "erro_monitorar.log"), "a", encoding="utf-8") as fh:
+            traceback.print_exc(file=fh)
+    except Exception:
+        pass
+
+
 def build(app):
+    try:
+        return _safe_build(app)
+    except Exception as ex:
+        import traceback
+        traceback.print_exc()
+        return card(ft.Column([title(I.T("Monitoramento")), sub(I.FM("Erro ao montar o dashboard: {e}", e=ex))],
+                              spacing=8))
+
+
+def _ctx(app):
+    """Estado compartilhado entre as seções (recarregado a cada build)."""
     con, st = app.con, app.state
     usuarios = db.list_usuarios(con)
     if not usuarios:
-        return card(sub(I.T("Cadastre usuários primeiro.")))
+        return None
     w = st.setdefault("widgets", {"trend": True, "donut": True, "bars": True, "comp": True, "tbl": True, "hist": True})
     sel_grupos = st.setdefault("grupos", set(GRPS))
-    sel_uids = st.setdefault("monitor_uids", set(str(x["id"]) for x in usuarios))
-
+    known = {str(x["id"]) for x in usuarios}
+    sel_uids = st.setdefault("monitor_uids", set())
+    sel_uids &= known                      # remove uids obsoletos (usuário excluído)
+    if not sel_uids:
+        sel_uids.update(known)             # default: TODOS os usuários
     anos = [str(a) for a in [r["ano"] for r in con.execute("SELECT DISTINCT ano FROM registros ORDER BY ano DESC")]]
     yy = __import__("datetime").date.today().year
     ano = st.setdefault("monitor_ano", str(yy) if str(yy) in anos or not anos else (anos[0] if anos else str(yy)))
     if ano not in anos:
         anos.append(ano)
+    uids = sorted(int(x) for x in sel_uids)
+    return dict(con=con, st=st, usuarios=usuarios, w=w, sel_grupos=sel_grupos,
+                sel_uids=sel_uids, anos=anos, ano=ano, uids=uids)
 
-    # ------- barra de filtros -------
+
+def _nome(ctx, uid):
+    return next((x["nome"] for x in ctx["usuarios"] if x["id"] == uid), f"#{uid}")
+
+
+def _filtros(app):
+    ctx = _ctx(app)
+    if ctx is None:
+        return card(ft.Column([title(I.T("Monitoramento")), sub(I.T("Cadastre usuários primeiro.")),
+                               btn(I.T("Ir para Usuários"), lambda e: app.navigate("usuarios"))], spacing=8))
+    st, w, sel_grupos, sel_uids, usuarios, anos, ano = (
+        ctx["st"], ctx["w"], ctx["sel_grupos"], ctx["sel_uids"], ctx["usuarios"], ctx["anos"], ctx["ano"])
+
     chips_grupo = []
 
     def toggle_g(g):
         if g in sel_grupos:
-            sel_grupos.discard(g) if len(sel_grupos) > 1 else None
+            if len(sel_grupos) > 1:
+                sel_grupos.discard(g)
         else:
             sel_grupos.add(g)
         app.refresh()
@@ -51,7 +120,7 @@ def build(app):
             sel_uids.add(uid)
         app.refresh()
 
-    chips_user = [chip(x["nome"], B.PRIMARY, "👤", on_click=lambda e, i=str(x["id"]): toggle_user(i),
+    chips_user = [chip(x["nome"], B.PRIMARY, "\U0001F464", on_click=lambda e, i=str(x["id"]): toggle_user(i),
                        selected=str(x["id"]) in sel_uids) for x in usuarios]
 
     dd_ano = ft.Dropdown(label=I.T("Ano"), width=110, value=ano, options=[ft.dropdown.Option(a) for a in anos],
@@ -59,18 +128,14 @@ def build(app):
                          content_padding=10, text_size=13,
                          on_change=lambda e: (st.update(monitor_ano=e.control.value), app.refresh()))
 
-    switches = ft.Row([ft.Switch(label=k, value=True, label_position=ft.LabelPosition.RIGHT, on_change=None)
-                       for k in []], visible=False)
-
     def mk_switch(key, lbl):
         def h(e):
             w[key] = bool(e.control.value)
             app.refresh()
-        sw = ft.Switch(label=lbl, value=w[key], label_position=ft.LabelPosition.RIGHT, active_color=B.PRIMARY,
-                       on_change=h)
-        return sw
+        return ft.Switch(label=lbl, value=w[key], label_position=ft.LabelPosition.RIGHT, active_color=B.PRIMARY,
+                         on_change=h)
 
-    filtros = card(ft.Column([
+    return card(ft.Column([
         ft.Row([title(I.T("Monitoramento")), sub(I.T("dashboards customizáveis · clique nos filtros para ligar/desligar séries"))], spacing=8),
         ft.Row([ft.Text(I.T("Tipologias:"), size=12, color=B.INK_SOFT)] + chips_grupo, wrap=True, spacing=8),
         ft.Row([ft.Text(I.T("Usuários:"), size=12, color=B.INK_SOFT)] + chips_user, wrap=True, spacing=8),
@@ -80,84 +145,128 @@ def build(app):
                wrap=True, spacing=14),
     ], spacing=10))
 
-    uids = [int(x) for x in sel_uids if x in sel_uids]
-    body = []
 
-    # ------- tendência do usuário principal -------
-    if w["trend"]:
-        uid = uids[0]
-        serie = db.serie_mensal(con, uid, int(ano))
-        ano_ant = str(int(ano) - 1)
-        serie_ant = {k: v for k, v in db.serie_mensal(con, uid, int(ano_ant)).items() if k}
-        p = charts.line_trend({m: v for m, v in serie.items() if m}, 
-                              I.FM("Tendência mensal — {nome} · {ano}", nome=next(x["nome"] for x in usuarios if x["id"] == uid), ano=ano),
-                              name=f"tr_{uid}_{ano}", outra=serie_ant)
-        body.append(_chart_card(I.T("📈 Tendência mensal"), p, sub(I.T("linha tracejada = mesmo período no ano anterior"))))
+def _sec_trend(app):
+    """BUGFIX: antes plotava apenas uids[0]; agora agrega todos os usuários
+    selecionados (linha grossa) e segmenta por usuário (linhas finas)."""
+    ctx = _ctx(app)
+    if ctx is None or not ctx["w"]["trend"]:
+        return None
+    con, ano, uids = ctx["con"], int(ctx["ano"]), ctx["uids"]
+    nomes = [_nome(ctx, u) for u in uids]
+    agg = {}
+    series = []
+    for i, u in enumerate(uids):
+        sm = {m: v for m, v in db.serie_mensal(con, u, ano).items() if m}
+        series.append((nomes[i], CORES_USUARIO[i % len(CORES_USUARIO)], sm))
+        for m, v in sm.items():
+            agg[m] = agg.get(m, 0.0) + v
+    nome_agg = I.T("Todos") if len(uids) > 1 else nomes[0]
+    series.insert(0, (nome_agg, B.PRIMARY, agg))
+    titulo = I.FM("Tendência mensal — {nome} · {ano}", nome=(I.FM("{n} usuários", n=len(uids)) if len(uids) > 1 else nomes[0]), ano=str(ano))
+    p = charts.line_trend(agg, titulo, name=f"tr_all_{ano}", series=series)
+    return _chart_card(I.T("\U0001F4C8 Tendência mensal"), p,
+                       sub(I.T("linha grossa = total agregado dos usuários selecionados; linhas finas = cada usuário")))
 
-    # ------- composição e tipologia -------
-    uid = uids[0]
-    gr_filtrado = {g: v for g, v in db.por_grupo(con, uid, int(ano)).items() if g in sel_grupos}
-    if w["donut"]:
-        body.append(_chart_card(I.T("🍩 Composição por tipologia"),
-                                charts.donut(gr_filtrado, name=f"dn_{uid}_{ano}")))
-    if w["bars"]:
-        body.append(_chart_card(I.T("📊 kgCO₂e por tipologia"),
-                                charts.bars_grupos(gr_filtrado, name=f"br_{uid}_{ano}")))
 
-    # ------- comparativo entre usuários -------
-    if w["comp"] and len(uids) >= 1:
-        matriz = db.comparativo_usuarios(con, int(ano), list(sel_grupos))
-        nomes = [next(x["nome"] for x in usuarios if x["id"] == u) for u in uids]
-        body.append(_chart_card(I.T("⚖️ Comparativo entre usuários"),
-                                charts.comp_usuarios(matriz, uids, nomes, name=f"cp_{ano}"),
-                                ft.Row([btn(I.T("Exportar comparativo PDF"), lambda e: exportar_comp(None)),], spacing=8)
-                                if len(uids) >= 2 else sub(I.T("selecione ≥ 2 usuários para exportar o comparativo"))))
+def _agrupado(ctx):
+    """Soma por tipologia sobre TODOS os usuários selecionados."""
+    tot = {}
+    for u in ctx["uids"]:
+        for g, v in db.por_grupo(ctx["con"], u, int(ctx["ano"])).items():
+            tot[g] = tot.get(g, 0.0) + v
+    return {g: v for g, v in tot.items() if g in ctx["sel_grupos"]}
 
-    # ------- tabela consolidada -------
-    if w["tbl"]:
-        cab = I.T("| Usuário |") + " " + " | ".join(I.meses_ab()) + " " + I.T("| Total |")
-        sep = "|---" * 14 + "|"
-        linhas_md = [cab, sep]
-        for uid in uids:
-            sm = db.serie_mensal(con, uid, int(ano))
-            nome = next(x["nome"] for x in usuarios if x["id"] == uid)
-            vals = [f"{sm.get(m, 0):.0f}" for m in range(1, 13)]
-            tot = sum(sm.get(m, 0) for m in range(1, 13))
-            linhas_md.append(f"| **{nome}** | " + " | ".join(vals) + f" | **{tot:.0f}** |")
-        md = ft.Markdown("\n".join(linhas_md), selectable=True,
-                         extension_set=ft.MarkdownExtensionSet.GITHUB_WEB)
-        body.append(card(ft.Column([title(I.T("🗓️ Tabela consolidada (kgCO₂e/mês)")), md], spacing=8)))
 
-    # ------- baselines / histórico anual -------
-    if w["hist"]:
-        bls = con.execute("SELECT b.*, u.nome FROM baselines b JOIN usuarios u ON u.id=b.usuario_id ORDER BY b.criado_em DESC LIMIT 6").fetchall()
-        itens = []
-        for b in bls:
-            itens.append(card(ft.Row([ft.Text("📌", size=14),
-                                      ft.Column([ft.Text(I.FM("{nome} — baseline {data}", nome=b["nome"], data=b["criado_em"][:10]), size=12.5,
-                                                          weight=ft.FontWeight.W_600),
-                                                 sub(I.FM("total do domicílio: {v} kgCO₂e · {respostas}", v=f"{b['total_kg']:,.0f}".replace(",", "."), respostas=b["respostas"][:110]))],
-                                                expand=True, spacing=2)], spacing=8), bgcolor=B.CARD_ALT))
-        body.append(card(ft.Column([title(I.T("🧭 Baselines da calculadora rápida (comparar anos)"))] +
-                                   (itens or [sub(I.T("nenhuma baseline salva"))]), spacing=8)))
+def _sec_donut(app):
+    ctx = _ctx(app)
+    if ctx is None or not ctx["w"]["donut"]:
+        return None
+    gr = _agrupado(ctx)
+    return _chart_card(I.T("\U0001F369 Composição por tipologia"),
+                       charts.donut(gr, name=f"dn_all_{ctx['ano']}"))
 
-    # ------- exportação individual -------
-    def exportar_usuario(e):
-        uid = uids[0]
-        path = reports.relatorio_usuario(con, uid, int(ano))
-        app.toast(I.FM("PDF gerado: {p}", p=path))
 
-    def exportar_comp(e):
-        path = reports.relatorio_comparativo(con, uids, int(ano), list(sel_grupos))
-        app.toast(f"PDF gerado: {path}")
+def _sec_bars(app):
+    ctx = _ctx(app)
+    if ctx is None or not ctx["w"]["bars"]:
+        return None
+    gr = _agrupado(ctx)
+    return _chart_card(I.T("\U0001F4CA kgCO\u2082e por tipologia"),
+                       charts.bars_grupos(gr, name=f"br_all_{ctx['ano']}"))
 
-    export_bar = card(ft.Row([title(I.T("📄 Relatórios PDF")), ft.Container(expand=True),
-                              btn(I.FM("Relatório do 1º usuário · {ano}", ano=ano), lambda e: exportar_usuario(e),
-                                  icon=ft.Icons.PICTURE_AS_PDF),
-                              btn(I.FM("Comparativo · {ano}", ano=ano), lambda e: exportar_comp(e), filled=False,
-                                  icon=ft.Icons.PICTURE_AS_PDF)], spacing=10, wrap=True))
 
-    return ft.Column([filtros, *body, export_bar], scroll=ft.ScrollMode.AUTO, spacing=10)
+def _sec_comp(app):
+    ctx = _ctx(app)
+    if ctx is None or not ctx["w"]["comp"]:
+        return None
+    uids = ctx["uids"]
+    matriz = db.comparativo_usuarios(ctx["con"], int(ctx["ano"]), list(ctx["sel_grupos"]))
+    nomes = [_nome(ctx, u) for u in uids]
+    return _chart_card(I.T("\u2696\uFE0F Comparativo entre usuários"),
+                       charts.comp_usuarios(matriz, uids, nomes, name=f"cp_{ctx['ano']}"),
+                       ft.Row([btn(I.T("Exportar comparativo PDF"), lambda e: _export_comp(app), filled=False,
+                                   icon=ft.Icons.PICTURE_AS_PDF)], spacing=8)
+                       if len(uids) >= 2 else sub(I.T("selecione \u2265 2 usuários para exportar o comparativo")))
+
+
+def _sec_tbl(app):
+    ctx = _ctx(app)
+    if ctx is None or not ctx["w"]["tbl"]:
+        return None
+    con, ano, uids = ctx["con"], int(ctx["ano"]), ctx["uids"]
+    cab = I.T("| Usuário |") + " " + " | ".join(I.meses_ab()) + " " + I.T("| Total |")
+    sep = "|---" * 14 + "|"
+    linhas_md = [cab, sep]
+    for uid in uids:
+        sm = db.serie_mensal(con, uid, ano)
+        vals = [f"{sm.get(m, 0):.0f}" for m in range(1, 13)]
+        tot = sum(sm.get(m, 0) for m in range(1, 13))
+        linhas_md.append(f"| **{_nome(ctx, uid)}** | " + " | ".join(vals) + f" | **{tot:.0f}** |")
+    md = ft.Markdown("\n".join(linhas_md), selectable=True, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB)
+    return card(ft.Column([title(I.T("\U0001F5D3\uFE0F Tabela consolidada (kgCO\u2082e/mês)")), md], spacing=8))
+
+
+def _sec_hist(app):
+    ctx = _ctx(app)
+    if ctx is None or not ctx["w"]["hist"]:
+        return None
+    bls = ctx["con"].execute("SELECT b.*, u.nome FROM baselines b JOIN usuarios u ON u.id=b.usuario_id "
+                             "ORDER BY b.criado_em DESC LIMIT 6").fetchall()
+    itens = []
+    for b in bls:
+        itens.append(card(ft.Row([ft.Text("\U0001F4CC", size=14),
+                                  ft.Column([ft.Text(I.FM("{nome} — baseline {data}", nome=b["nome"], data=b["criado_em"][:10]),
+                                                    size=12.5, weight=ft.FontWeight.W_600),
+                                             sub(I.FM("total do domicílio: {v} kgCO\u2082e · {respostas}",
+                                                      v=f"{b['total_kg']:,.0f}".replace(",", "."), respostas=b["respostas"][:110]))],
+                                            expand=True, spacing=2)], spacing=8), bgcolor=B.CARD_ALT))
+    return card(ft.Column([title(I.T("\U0001F9ED Baselines da calculadora rápida (comparar anos)"))] +
+                          (itens or [sub(I.T("nenhuma baseline salva"))]), spacing=8))
+
+
+def _export_usuario(app):
+    ctx = _ctx(app)
+    uid = ctx["uids"][0]
+    path = reports.relatorio_usuario(ctx["con"], uid, int(ctx["ano"]))
+    app.toast(I.FM("PDF gerado: {p}", p=path))
+
+
+def _export_comp(app):
+    ctx = _ctx(app)
+    path = reports.relatorio_comparativo(ctx["con"], ctx["uids"], int(ctx["ano"]), list(ctx["sel_grupos"]))
+    app.toast(f"PDF gerado: {path}")
+
+
+def _export_bar(app):
+    ctx = _ctx(app)
+    if ctx is None:
+        return ft.Container()
+    return card(ft.Row([title(I.T("\U0001F4C4 Relatórios PDF")), ft.Container(expand=True),
+                        btn(I.FM("Relatório do 1º usuário · {ano}", ano=ctx["ano"]), lambda e: _export_usuario(app),
+                            icon=ft.Icons.PICTURE_AS_PDF),
+                        btn(I.FM("Comparativo · {ano}", ano=ctx["ano"]), lambda e: _export_comp(app), filled=False,
+                            icon=ft.Icons.PICTURE_AS_PDF)], spacing=10, wrap=True))
 
 
 def _chart_card(titulo, img_path, extra=None):
