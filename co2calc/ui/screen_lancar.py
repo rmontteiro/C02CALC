@@ -76,35 +76,43 @@ def build(app):
         tf_valor.label = I.FM("Quantidade ({un})", un=node['unidade'].split(' ')[0].strip() or I.T("unidade"))
 
         # --- filtragem pela base oficial (abas Fatores/Vínculos da planilha) ---
-        # 1) fatores vinculados à própria atividade (fatores.cod_atividade ou vinculos.id_fator)
-        metas = con.execute(
-            "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
-            "WHERE cod_atividade=? AND valor IS NOT NULL ORDER BY codigo", (cod,)).fetchall()
+        # 1) fator oficial vinculado à atividade (tabela vinculos -> id_fator) primeiro
+        metas, vistos = [], set()
         vrow = con.execute("SELECT id_fator, status FROM vinculos WHERE cod_atividade=?", (cod,)).fetchone()
+        ids_oficiais = []
         if vrow and vrow["id_fator"]:
             ids_oficiais = [x.strip() for x in str(vrow["id_fator"]).replace(";", ",").split(",") if x.strip()]
-            extras = [m for m in metas if m["codigo"] not in ids_oficiais]
             oficiais = con.execute(
                 "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
-                "WHERE codigo IN (%s) AND valor IS NOT NULL" % ",".join("?" * len(ids_oficiais)),
-                ids_oficiais).fetchall()
-            metas = list(oficiais) + extras
-        # 2) candidatos do mesmo método oficial não vinculados (ex.: GB/FR para rede/gás)
+                "WHERE codigo IN (%s) OR codigo COLLATE NOCASE IN (%s)" %
+                (",".join("?" * len(ids_oficiais)), ",".join("?" * len(ids_oficiais))),
+                ids_oficiais + ids_oficiais).fetchall()
+            for m in oficiais:
+                if m["codigo"] not in vistos:
+                    metas.append(m); vistos.add(m["codigo"])
+        # 2) demais fatores vinculados à própria atividade (fatores.cod_atividade / atividades_vinculadas)
+        vinculados = con.execute(
+            "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
+            "WHERE cod_atividade=? AND valor IS NOT NULL ORDER BY codigo", (cod,)).fetchall()
+        for m in vinculados:
+            if m["codigo"] not in vistos:
+                metas.append(m); vistos.add(m["codigo"])
+        # 3) candidatos do mesmo método oficial não vinculados (ex.: GB/FR para rede/gás)
         if node["metodo"]:
             mesmo_metodo = con.execute(
                 "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
-                "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' AND cod_atividade IS NULL "
+                "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' "
                 "ORDER BY iso, codigo", (node["metodo"],)).fetchall()
             have = {m["codigo"] for m in metas}
             metas += [m for m in mesmo_metodo if m["codigo"] not in have]
-        # 3) fallback legado: fatores antigos sem cod_atividade atrelados ao método
+        # 4) fallback legado: fatores antigos sem cod_atividade atrelados ao método
         legados = con.execute(
             "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
             "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' AND cod_atividade IS NULL AND iso IS NULL "
             "AND codigo LIKE ?", (node["metodo"], node["metodo"] + "_%")).fetchall()
         have = {m["codigo"] for m in metas}
         metas += [m for m in legados if m["codigo"] not in have]
-        # 4) GRID do país do usuário quando nada do método existe (mantém compatibilidade)
+        # 5) GRID do país do usuário quando nada do método existe (mantém compatibilidade)
         if not metas or node["metodo"] == "GRID":
             g = con.execute("SELECT codigo, valor, descricao, unidade, iso FROM fatores WHERE codigo=?",
                             (f"GRID_{u['pais']}",)).fetchone()

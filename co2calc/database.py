@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS taxonomia(
 );
 CREATE TABLE IF NOT EXISTS metodos(
   codigo TEXT PRIMARY KEY, metodo TEXT, unidade TEXT, calculo TEXT,
-  regras TEXT, fronteira TEXT, geografia TEXT, fontes TEXT, exemplo TEXT
+  regras TEXT, fronteira TEXT, geografia TEXT, fontes TEXT, exemplo TEXT,
+  descricao TEXT, unidade_pref TEXT
 );
 CREATE TABLE IF NOT EXISTS fatores(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +43,11 @@ CREATE TABLE IF NOT EXISTS fatores(
   valor REAL, descricao TEXT, fonte TEXT,
   iso TEXT,              -- ISO alfa-2 do fator (NULL = genérico/global)
   cod_atividade TEXT,    -- nó da taxonomia vinculado (ex.: C1.2.1)
-  status TEXT            -- 'Candidato — revisar' | 'Sem fator — pendente' | NULL (legado)
+  status TEXT,           -- 'Candidato — revisar' | 'Sem fator — pendente' | NULL (legado)
+  tecnologia TEXT,       -- descrição técnica do fator (aba Fatores)
+  gases TEXT,            -- gases incluídos / métrica (CO2, CO2e...)
+  fases TEXT,            -- fases do ciclo de vida incluídas
+  url TEXT               -- URL da fonte
 );
 CREATE TABLE IF NOT EXISTS vinculos(
   cod_atividade TEXT PRIMARY KEY,   -- código atividade (ex.: A1.1.1)
@@ -109,12 +114,12 @@ def init_db(path=None, seed_demo=True):
     con.executescript(SCHEMA)          # cria tabelas (novo) ou garante esquema (existente)
     _migrate(cur)                      # adiciona colunas novas em bancos existentes
     v = cur.execute("SELECT v FROM schema_meta").fetchone()
-    if not v or v["v"] < 4:
+    if not v or v["v"] < 5:
         _seed(cur)
         if v:
-            cur.execute("UPDATE schema_meta SET v=4")
+            cur.execute("UPDATE schema_meta SET v=5")
         else:
-            cur.execute("INSERT INTO schema_meta VALUES (4)")
+            cur.execute("INSERT INTO schema_meta VALUES (5)")
         if seed_demo:
             _demo(cur)
         con.commit()
@@ -122,11 +127,16 @@ def init_db(path=None, seed_demo=True):
 
 
 def _migrate(cur):
-    """Migração leve e idempotente: fatores.iso/cod_atividade/status + tabela vinculos."""
+    """Migração leve e idempotente: colunas novas de fatores/metodos + tabela vinculos."""
     cols = {r["name"] for r in cur.execute("PRAGMA table_info(fatores)").fetchall()}
-    for nome, tipo in (("iso", "TEXT"), ("cod_atividade", "TEXT"), ("status", "TEXT")):
+    for nome, tipo in (("iso", "TEXT"), ("cod_atividade", "TEXT"), ("status", "TEXT"),
+                       ("tecnologia", "TEXT"), ("gases", "TEXT"), ("fases", "TEXT"), ("url", "TEXT")):
         if nome not in cols:
             cur.execute(f"ALTER TABLE fatores ADD COLUMN {nome} {tipo}")
+    mcols = {r["name"] for r in cur.execute("PRAGMA table_info(metodos)").fetchall()}
+    for nome, tipo in (("descricao", "TEXT"), ("unidade_pref", "TEXT")):
+        if nome not in mcols:
+            cur.execute(f"ALTER TABLE metodos ADD COLUMN {nome} {tipo}")
 
 
 def _load(fname):
@@ -141,23 +151,43 @@ def _seed(cur):
                       n["familia"], n["metodo"], n["unidade"], n["coicop"], n["perimetro"], n["regras"],
                       n["geo"], n["caminho"]) for n in tax])
     met = _load("metodos.json")
-    cur.executemany("INSERT OR IGNORE INTO metodos VALUES (?,?,?,?,?,?,?,?,?)",
+    minfo = _load("fatores.json").get("metodos_info", {})
+    cur.executemany("INSERT OR REPLACE INTO metodos VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     [(m.get("Código"), m.get("Método"), m.get("Unidade preferencial"), m.get("Cálculo ou procedimento"),
                       m.get("Regras"), m.get("Fronteira"), m.get("Geografia do fator"), m.get("Fontes candidatas"),
-                      m.get("Condição ou exemplo")) for m in met])
+                      m.get("Condição ou exemplo"),
+                      (minfo.get(m.get("Código")) or {}).get("descricao", ""),
+                      (minfo.get(m.get("Código")) or {}).get("unidade", "")) for m in met])
     fac = _load("fatores.json")
+    # expande atividades_vinculadas: um fator vira uma linha por atividade vinculada
+    linhas_fatores = []
+    for f in fac["fatores"]:
+        av = f.get("atividades_vinculadas") or ([f["cod_atividade"]] if f.get("cod_atividade") else [None])
+        for cod_atv in av:
+            linhas_fatores.append((
+                f["codigo"] + ("" if cod_atv is None or len(av) == 1 else "@" + cod_atv),
+                f["grupo"], f["metodo"], f.get("unidade_atividade") or f.get("unidade", ""),
+                f["valor"], f.get("tecnologia", ""),
+                ((f.get("fonte_id") or "") + (" — " + f["url"] if f.get("url") else "")).strip(" —"),
+                f.get("iso"), cod_atv, f.get("status"),
+                f.get("tecnologia", ""), f.get("gases", ""), f.get("fases", ""), f.get("url", "")))
     cur.executemany(
-        "INSERT OR REPLACE INTO fatores(codigo,grupo,metodo,unidade,valor,descricao,fonte,iso,cod_atividade,status)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?)",
-        [(f["codigo"], f["grupo"], f["metodo"], f["unidade"], f["valor"], f["descricao"], f["fonte"],
-          f.get("iso"), f.get("cod_atividade"), f.get("status")) for f in fac["fatores"]])
-    vin = fac.get("vinculos", [])
+        "INSERT OR REPLACE INTO fatores(codigo,grupo,metodo,unidade,valor,descricao,fonte,iso,cod_atividade,status,"
+        "tecnologia,gases,fases,url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", linhas_fatores)
+    vin = fac.get("vinculos", {})
     cur.execute("DELETE FROM vinculos")
-    cur.executemany(
-        "INSERT OR IGNORE INTO vinculos(cod_atividade,cod_pai,atividade,metodo,id_fator,status,perimetro,unidade_pref)"
-        " VALUES (?,?,?,?,?,?,?,?)",
-        [(v["cod_atividade"], v["cod_pai"], v["atividade"], v["metodo"], v["id_fator"],
-          v["status"], v["perimetro"], v["unidade_pref"]) for v in vin])
+    if isinstance(vin, dict):   # formato novo: mapa codigo -> atributos
+        cur.executemany(
+            "INSERT OR IGNORE INTO vinculos(cod_atividade,cod_pai,atividade,metodo,id_fator,status,perimetro,unidade_pref)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            [(cod, v["cod_pai"], v["atividade"], v["metodo"], v["fator_id"],
+              v["status"], v["perimetro"], v["unidade_pref"]) for cod, v in vin.items()])
+    else:                       # formato legado: lista de objetos com cod_atividade
+        cur.executemany(
+            "INSERT OR IGNORE INTO vinculos(cod_atividade,cod_pai,atividade,metodo,id_fator,status,perimetro,unidade_pref)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            [(v["cod_atividade"], v["cod_pai"], v["atividade"], v["metodo"], v["id_fator"],
+              v["status"], v["perimetro"], v["unidade_pref"]) for v in vin])
     import hashlib
     tx = os.path.join(os.path.dirname(BASE), "docs", "taxonomia",
                       "Taxonomia_Mundial_Pegada_Carbono_Individual.xlsx")
@@ -171,10 +201,10 @@ def _seed(cur):
     pai = _load("paises.json")["paises"]
     cur.executemany("INSERT OR IGNORE INTO paises VALUES (?,?,?,?)",
                     [(p["iso"], p["nome"], p["grid"], p["media"]) for p in pai])
-    # fatores GRID_<iso> / MEDIA_<iso> derivados (editáveis em tela)
+    # fatores GRID_<iso> / MEDIA_<iso> derivados (editáveis em tela) — apenas se ausentes
     for p in pai:
         cur.execute("INSERT OR IGNORE INTO fatores(codigo,grupo,metodo,unidade,valor,descricao,fonte) VALUES (?,?,?,?,?,?,?)",
-                    (f"GRID_{p['iso']}", "GRID", "GRID", "kWh", p["grid"], f"Rede elétrica {p['nome']} (kgCO2e/kWh)", "IEA/Ember aprox."))
+                    (f"GRID_{p['iso']}", "MORAD", "GRID", "kWh", p["grid"], f"Rede elétrica {p['nome']} (kgCO2e/kWh)", "IEA/Ember aprox."))
         cur.execute("INSERT OR IGNORE INTO fatores(codigo,grupo,metodo,unidade,valor,descricao,fonte) VALUES (?,?,?,?,?,?,?)",
                     (f"MEDIA_{p['iso']}", "MEDIA", "", "tCO2e/pessoa/ano", p["media"], f"Média nacional {p['nome']} (tCO2e/per capita)", "OECD 2022 / Defra aprox."))
 
