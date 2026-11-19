@@ -39,7 +39,20 @@ CREATE TABLE IF NOT EXISTS metodos(
 CREATE TABLE IF NOT EXISTS fatores(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   codigo TEXT UNIQUE, grupo TEXT, metodo TEXT, unidade TEXT,
-  valor REAL, descricao TEXT, fonte TEXT
+  valor REAL, descricao TEXT, fonte TEXT,
+  iso TEXT,              -- ISO alfa-2 do fator (NULL = genérico/global)
+  cod_atividade TEXT,    -- nó da taxonomia vinculado (ex.: C1.2.1)
+  status TEXT            -- 'Candidato — revisar' | 'Sem fator — pendente' | NULL (legado)
+);
+CREATE TABLE IF NOT EXISTS vinculos(
+  cod_atividade TEXT PRIMARY KEY,   -- código atividade (ex.: A1.1.1)
+  cod_pai TEXT,                     -- código pai (ex.: A1.1)
+  atividade TEXT,                   -- nome legível
+  metodo TEXT,                      -- método oficial (TR_CAR, GRID, FOOD...)
+  id_fator TEXT,                    -- ID do fator existente (NULL = pendente)
+  status TEXT,                      -- Candidato — revisar / Sem fator — pendente
+  perimetro TEXT,
+  unidade_pref TEXT
 );
 CREATE TABLE IF NOT EXISTS paises(
   iso TEXT PRIMARY KEY, nome TEXT, grid REAL, media REAL
@@ -92,19 +105,28 @@ def connect(path=None):
 
 def init_db(path=None, seed_demo=True):
     con = connect(path)
-    con.executescript(SCHEMA)
     cur = con.cursor()
+    con.executescript(SCHEMA)          # cria tabelas (novo) ou garante esquema (existente)
+    _migrate(cur)                      # adiciona colunas novas em bancos existentes
     v = cur.execute("SELECT v FROM schema_meta").fetchone()
-    if not v or v["v"] < 3:
+    if not v or v["v"] < 4:
         _seed(cur)
         if v:
-            cur.execute("UPDATE schema_meta SET v=3")
+            cur.execute("UPDATE schema_meta SET v=4")
         else:
-            cur.execute("INSERT INTO schema_meta VALUES (3)")
+            cur.execute("INSERT INTO schema_meta VALUES (4)")
         if seed_demo:
             _demo(cur)
         con.commit()
     return con
+
+
+def _migrate(cur):
+    """Migração leve e idempotente: fatores.iso/cod_atividade/status + tabela vinculos."""
+    cols = {r["name"] for r in cur.execute("PRAGMA table_info(fatores)").fetchall()}
+    for nome, tipo in (("iso", "TEXT"), ("cod_atividade", "TEXT"), ("status", "TEXT")):
+        if nome not in cols:
+            cur.execute(f"ALTER TABLE fatores ADD COLUMN {nome} {tipo}")
 
 
 def _load(fname):
@@ -123,9 +145,19 @@ def _seed(cur):
                     [(m.get("Código"), m.get("Método"), m.get("Unidade preferencial"), m.get("Cálculo ou procedimento"),
                       m.get("Regras"), m.get("Fronteira"), m.get("Geografia do fator"), m.get("Fontes candidatas"),
                       m.get("Condição ou exemplo")) for m in met])
-    fac = _load("fatores.json")["fatores"]
-    cur.executemany("INSERT OR IGNORE INTO fatores(codigo,grupo,metodo,unidade,valor,descricao,fonte) VALUES (?,?,?,?,?,?,?)",
-                    [(f["codigo"], f["grupo"], f["metodo"], f["unidade"], f["valor"], f["descricao"], f["fonte"]) for f in fac])
+    fac = _load("fatores.json")
+    cur.executemany(
+        "INSERT OR REPLACE INTO fatores(codigo,grupo,metodo,unidade,valor,descricao,fonte,iso,cod_atividade,status)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [(f["codigo"], f["grupo"], f["metodo"], f["unidade"], f["valor"], f["descricao"], f["fonte"],
+          f.get("iso"), f.get("cod_atividade"), f.get("status")) for f in fac["fatores"]])
+    vin = fac.get("vinculos", [])
+    cur.execute("DELETE FROM vinculos")
+    cur.executemany(
+        "INSERT OR IGNORE INTO vinculos(cod_atividade,cod_pai,atividade,metodo,id_fator,status,perimetro,unidade_pref)"
+        " VALUES (?,?,?,?,?,?,?,?)",
+        [(v["cod_atividade"], v["cod_pai"], v["atividade"], v["metodo"], v["id_fator"],
+          v["status"], v["perimetro"], v["unidade_pref"]) for v in vin])
     import hashlib
     tx = os.path.join(os.path.dirname(BASE), "docs", "taxonomia",
                       "Taxonomia_Mundial_Pegada_Carbono_Individual.xlsx")

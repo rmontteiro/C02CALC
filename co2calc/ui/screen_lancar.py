@@ -74,21 +74,52 @@ def build(app):
             atualiza_prev()
             return
         tf_valor.label = I.FM("Quantidade ({un})", un=node['unidade'].split(' ')[0].strip() or I.T("unidade"))
-        metas = con.execute("SELECT codigo, valor, descricao, unidade FROM fatores "
-                            "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' ORDER BY codigo",
-                            (node["metodo"],)).fetchall()
-        if node["metodo"] in ("GRID", None) or not metas:
-            g = con.execute("SELECT codigo, valor, descricao, unidade FROM fatores WHERE codigo=?",
+
+        # --- filtragem pela base oficial (abas Fatores/Vínculos da planilha) ---
+        # 1) fatores vinculados à própria atividade (fatores.cod_atividade ou vinculos.id_fator)
+        metas = con.execute(
+            "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
+            "WHERE cod_atividade=? AND valor IS NOT NULL ORDER BY codigo", (cod,)).fetchall()
+        vrow = con.execute("SELECT id_fator, status FROM vinculos WHERE cod_atividade=?", (cod,)).fetchone()
+        if vrow and vrow["id_fator"]:
+            ids_oficiais = [x.strip() for x in str(vrow["id_fator"]).replace(";", ",").split(",") if x.strip()]
+            extras = [m for m in metas if m["codigo"] not in ids_oficiais]
+            oficiais = con.execute(
+                "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
+                "WHERE codigo IN (%s) AND valor IS NOT NULL" % ",".join("?" * len(ids_oficiais)),
+                ids_oficiais).fetchall()
+            metas = list(oficiais) + extras
+        # 2) candidatos do mesmo método oficial não vinculados (ex.: GB/FR para rede/gás)
+        if node["metodo"]:
+            mesmo_metodo = con.execute(
+                "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
+                "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' AND cod_atividade IS NULL "
+                "ORDER BY iso, codigo", (node["metodo"],)).fetchall()
+            have = {m["codigo"] for m in metas}
+            metas += [m for m in mesmo_metodo if m["codigo"] not in have]
+        # 3) fallback legado: fatores antigos sem cod_atividade atrelados ao método
+        legados = con.execute(
+            "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
+            "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' AND cod_atividade IS NULL AND iso IS NULL "
+            "AND codigo LIKE ?", (node["metodo"], node["metodo"] + "_%")).fetchall()
+        have = {m["codigo"] for m in metas}
+        metas += [m for m in legados if m["codigo"] not in have]
+        # 4) GRID do país do usuário quando nada do método existe (mantém compatibilidade)
+        if not metas or node["metodo"] == "GRID":
+            g = con.execute("SELECT codigo, valor, descricao, unidade, iso FROM fatores WHERE codigo=?",
                             (f"GRID_{u['pais']}",)).fetchone()
-            if g:
-                metas = [g]
+            if g and g["codigo"] not in {m["codigo"] for m in metas}:
+                metas.append(g)
+
         opts = []
         for m in metas:
+            sufixo = f" [{m['iso']}]" if m["iso"] else ""
             opts.append(ft.dropdown.Option(m["codigo"],
-                            f"{RF.rotulo(m['codigo'], dict(m))} — {m['valor']:g} kgCO₂e/{m['unidade']}"))
+                            f"{RF.rotulo(m['codigo'], dict(m))} — {m['valor']:g} kgCO₂e/{m['unidade']}{sufixo}"))
         dd_fator.options = opts
         if opts:
             dd_fator.value = opts[0].key
+        s.update(metodo=node["metodo"], unidade=(metas[0]["unidade"] if metas else node["unidade"]))
         if e:
             dd_fator.update()
         atualiza_prev()

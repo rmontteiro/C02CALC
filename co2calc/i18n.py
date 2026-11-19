@@ -237,6 +237,11 @@ _CAT = {
     "Erro: {e}": ("Error: {e}", "Error: {e}"),
     "“{nome}” removido com seus dados.": ("“{nome}” and all their data were removed.", "“{nome}” y sus datos fueron eliminados."),
     "Selecionar": ("Select", "Seleccionar"),
+    "Cancelar": ("Cancel", "Cancelar"),
+    "Excluir usuário?": ("Delete user?", "¿Eliminar usuario?"),
+    "Esta ação remove “{nome}” e todos os seus lançamentos. Não pode ser desfeita.": (
+        "This permanently removes “{nome}” and all their entries. This cannot be undone.",
+        "Esta acción elimina a “{nome}” y todos sus registros. No se puede deshacer."),
     "Excluir usuário e dados": ("Delete user and data", "Eliminar usuario y datos"),
     "⚙️ Editar fatores de emissão": ("⚙️ Edit emission factors", "⚙️ Editar factores de emisión"),
     ("todos os fatores do cálculo, incluindo a rede elétrica e a média nacional do seu país — "
