@@ -19,7 +19,8 @@ from co2calc import database as db
 from co2calc import i18n as I
 from co2calc.ui import widgets as W
 from co2calc.ui import (screen_home, screen_lancar, screen_calcular,
-                        screen_monitorar, screen_usuarios, screen_idioma)
+                        screen_monitorar, screen_usuarios, screen_idioma,
+                        screen_admin_usuarios)
 
 ROTAS = {
     "home": ("Início", ft.Icons.SPACE_DASHBOARD_OUTLINED, ft.Icons.SPACE_DASHBOARD, screen_home),
@@ -27,6 +28,7 @@ ROTAS = {
     "calcular": ("Calculadora", ft.Icons.CALCULATE_OUTLINED, ft.Icons.CALCULATE, screen_calcular),
     "monitorar": ("Monitorar", ft.Icons.INSIGHTS_OUTLINED, ft.Icons.INSIGHTS, screen_monitorar),
     "usuarios": ("Usuários", ft.Icons.PERSON_OUTLINED, ft.Icons.PERSON, screen_usuarios),
+    "admin_usuarios": ("Admin Usuários", ft.Icons.MANAGE_ACCOUNTS_OUTLINED, ft.Icons.MANAGE_ACCOUNTS, screen_admin_usuarios),
 }
 
 

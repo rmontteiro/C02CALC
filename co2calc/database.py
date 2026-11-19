@@ -310,6 +310,14 @@ def del_usuario(con, uid):
     con.commit()
 
 
+def upd_usuario(con, uid, nome, pais, pessoas, obs=None, cor=None):
+    """Atualiza os dados de um usuário existente (painel Admin Usuários)."""
+    con.execute(
+        "UPDATE usuarios SET nome=?, pais=?, pessoas=?, obs=?, cor=? WHERE id=?",
+        (nome, pais, max(1, int(pessoas)), obs, cor, uid))
+    con.commit()
+
+
 def total_usuario(con, uid, ano, mes=None):
     """kgCO2e no período. mes=None → ano todo (mensais do ano + anuais do ano)."""
     if mes:

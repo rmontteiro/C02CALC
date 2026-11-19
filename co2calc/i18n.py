@@ -264,6 +264,23 @@ _CAT = {
     "Selecionar": ("Select", "Seleccionar"),
     "Cancelar": ("Cancel", "Cancelar"),
     "Excluir usuário?": ("Delete user?", "¿Eliminar usuario?"),
+    "“{nome}” e todos os seus lançamentos serão removidos.": (
+        "“{nome}” and all their entries will be removed.",
+        "Se eliminarán “{nome}” y todos sus registros."),
+    "Administração de usuários": ("User administration", "Administración de usuarios"),
+    "Cadastre, edite ou remova usuários da base.": (
+        "Register, edit or delete users in the database.",
+        "Registrá, editá o eliminá usuarios de la base."),
+    "Usuários cadastrados": ("Registered users", "Usuarios registrados"),
+    "Nenhum usuário cadastrado.": ("No users registered yet.", "Aún no hay usuarios registrados."),
+    "pessoa(s)": ("person(s)", "persona(s)"),
+    "lançamento(s)": ("entrance(s)", "registro(s)"),
+    "Novo usuário": ("New user", "Nuevo usuario"),
+    "Editar usuário": ("Edit user", "Editar usuario"),
+    "Salvar alterações": ("Save changes", "Guardar cambios"),
+    "Cancelar edição": ("Cancel edit", "Cancelar edición"),
+    "Admin Usuários": ("User Admin", "Admin Usuarios"),
+    "Usuário “{nome}” atualizado.": ("User “{nome}” updated.", "Usuario “{nome}” actualizado."),
     "Esta ação remove “{nome}” e todos os seus lançamentos. Não pode ser desfeita.": (
         "This permanently removes “{nome}” and all their entries. This cannot be undone.",
         "Esta acción elimina a “{nome}” y todos sus registros. No se puede deshacer."),
