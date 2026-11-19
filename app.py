@@ -70,6 +70,15 @@ class App:
             page.overlay.append(self.file_picker)  # página real (desktop/web)
         except AttributeError:
             page.add(self.file_picker)             # páginas mínimas de teste
+        # BUGFIX (relatório PDF "não funcionava" no Ubuntu): em Flet >=0.28 o
+        # FilePicker só responde quando registrado na página ANTES do primeiro
+        # update() — garantimos o registro imediato e verificável.
+        self._fp_ready = False
+        try:
+            page.update()
+            self._fp_ready = True
+        except Exception:
+            pass
         self._pending_save = None  # (gerador_callable, sugestao_nome) aguardando escolha do usuário
 
         self.nav = ft.NavigationBar(
@@ -146,13 +155,26 @@ class App:
 
     def toast(self, msg):
         snack = ft.SnackBar(ft.Text(msg, size=13), bgcolor=B.PRIMARY_DARK, action="OK")
-        self.page.open(snack)
+        try:
+            self.page.open(snack)
+        except Exception:
+            # página ainda não conectada (início do boot / testes): registra no overlay
+            try:
+                self.page.overlay.append(snack)
+            except Exception:
+                pass
 
     # ---------- exportação de PDF com escolha dinâmica de pasta ----------
     def salvar_pdf(self, gerador, sugestao_nome):
         """Gera o PDF em arquivo temporário e abre o diálogo nativo 'Salvar como…'
         para o usuário escolher a pasta destino. `gerador` é um callable que recebe
-        o caminho absoluto de destino e escreve o PDF nele."""
+        o caminho absoluto de destino e escreve o PDF nele.
+
+        BUGFIX (Ubuntu): se o FilePicker não estiver registrado na página ou o
+        diálogo nativo falhar (sem xdg-desktop-portal/GTK), o app NÃO trava mais
+        em silêncio — cai no modo de recuperação: grava o PDF em data/relatorios/
+        e informa o caminho por um toast visível.
+        """
         import tempfile
         fd, tmp = tempfile.mkstemp(prefix="co2calc_", suffix=".pdf")
         os.close(fd)
@@ -166,17 +188,29 @@ class App:
             self.toast(I.FM("⚠️ Erro ao gerar o PDF: {e}", e=ex))
             return
         self._pending_save = (tmp, gerador)
+        dialog_ok = False
         try:
             self.file_picker.save_file(dialog_title=I.T("Salvar relatório PDF"),
                                        file_name=sugestao_nome,
                                        allowed_extensions=["pdf"])
+            dialog_ok = True
         except Exception as ex:
-            self._pending_save = None
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            self.toast(I.FM("⚠️ Não foi possível abrir a janela de seleção: {e}", e=ex))
+            dialog_ok = False
+        if not dialog_ok:
+            self._fallback_salvar(tmp, "janela de seleção indisponível")
+
+    def _fallback_salvar(self, tmp, motivo):
+        """Caminho alternativo quando o diálogo nativo não pode ser aberto."""
+        self._pending_save = None
+        try:
+            os.makedirs(db.DATA_DIR, exist_ok=True)
+            dest = os.path.join(db.DATA_DIR, "relatorios", os.path.basename(tmp))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            import shutil
+            shutil.move(tmp, dest)
+            self.toast(I.FM("⚠️ {m} — relatório salvo automaticamente em: {p}", m=motivo, p=dest))
+        except Exception as ex:
+            self.toast(I.FM("⚠️ Falha ao salvar o PDF: {e}", e=ex))
 
     def _on_file_picked(self, e: ft.FilePickerResultEvent):
         pend = self._pending_save

@@ -241,6 +241,8 @@ _CAT = {
     "Exportação cancelada.": ("Export cancelled.", "Exportación cancelada."),
     "⚠️ Erro ao gerar o PDF: {e}": ("⚠️ Error generating the PDF: {e}", "⚠️ Error al generar el PDF: {e}"),
     "⚠️ Não foi possível abrir a janela de seleção: {e}": ("⚠️ Could not open the selection window: {e}", "⚠️ No se pudo abrir la ventana de selección: {e}"),
+    "janela de seleção indisponível": ("selection dialog unavailable", "ventana de selección no disponible"),
+    "⚠️ {m} — relatório salvo automaticamente em: {p}": ("⚠️ {m} — report saved automatically to: {p}", "⚠️ {m} — informe guardado automáticamente en: {p}"),
     "✅ Relatório salvo em: {p}": ("✅ Report saved to: {p}", "✅ Informe guardado en: {p}"),
     "⚠️ Falha ao salvar o PDF: {e}": ("⚠️ Failed to save the PDF: {e}", "⚠️ Error al guardar el PDF: {e}"),
     "🧭 Baselines da calculadora rápida (comparar anos)": (
