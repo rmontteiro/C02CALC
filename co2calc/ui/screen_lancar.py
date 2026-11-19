@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """Tela Lançar — inserção de dados por usuário, com tipologia (taxonomia A–J),
 periodicidade mensal ou anual, rateio e prévia do cálculo E = v × f ÷ n."""
+import json
+import os
+
 import flet as ft
 from .. import branding as B
 from .. import database as db
@@ -9,6 +12,21 @@ from .. import rotulos_fatores as RF
 from .widgets import card, title, sub, kv, dropdown, btn, icon_btn, num_field
 
 B_MONTHS = db.MONTHS
+
+# chaves especiais do dropdown de fator (atividades sem fator numérico)
+SEM_FATOR_KEYS = ("sem_fator", "pendente", "sem_dado")
+
+_FATORES_CACHE = {}
+
+
+def _load_fatores_json():
+    """Carrega a base oficial de fatores/vínculos (seed/fatores.json) com cache."""
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "seed", "fatores.json")
+    mtime = os.path.getmtime(path)
+    if path not in _FATORES_CACHE or _FATORES_CACHE[path][0] != mtime:
+        with open(path, "r", encoding="utf-8") as f:
+            _FATORES_CACHE[path] = (mtime, json.load(f))
+    return _FATORES_CACHE[path][1]
 
 
 def build(app):
@@ -68,66 +86,61 @@ def build(app):
         node = con.execute("SELECT * FROM taxonomia WHERE codigo=?", (cod,)).fetchone() if cod else None
         dd_fator.options = []
         s.update(codigo=cod, metodo=None, unidade=None)
+
         if not node:
+            if e:
+                dd_ativ.update()
+                dd_fator.update()
+            atualiza_prev()
+            return
+
+        # --- sistema de vínculos do fatores.json (abas Fatores/Vínculos da planilha) ---
+        dados_fatores = _load_fatores_json()
+        vinculo = dados_fatores.get("vinculos", {}).get(cod)
+
+        if not vinculo:
+            # atividade não mapeada na planilha
+            dd_fator.options = [ft.dropdown.Option("sem_dado", I.T("⚠️ Atividade sem vínculo definido"))]
+            dd_fator.value = None
             if e:
                 dd_fator.update()
             atualiza_prev()
             return
-        tf_valor.label = I.FM("Quantidade ({un})", un=node['unidade'].split(' ')[0].strip() or I.T("unidade"))
 
-        # --- filtragem pela base oficial (abas Fatores/Vínculos da planilha) ---
-        # 1) fator oficial vinculado à atividade (tabela vinculos -> id_fator) primeiro
-        metas, vistos = [], set()
-        vrow = con.execute("SELECT id_fator, status FROM vinculos WHERE cod_atividade=?", (cod,)).fetchone()
-        ids_oficiais = []
-        if vrow and vrow["id_fator"]:
-            ids_oficiais = [x.strip() for x in str(vrow["id_fator"]).replace(";", ",").split(",") if x.strip()]
-            oficiais = con.execute(
-                "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
-                "WHERE codigo IN (%s) OR codigo COLLATE NOCASE IN (%s)" %
-                (",".join("?" * len(ids_oficiais)), ",".join("?" * len(ids_oficiais))),
-                ids_oficiais + ids_oficiais).fetchall()
-            for m in oficiais:
-                if m["codigo"] not in vistos:
-                    metas.append(m); vistos.add(m["codigo"])
-        # 2) demais fatores vinculados à própria atividade (fatores.cod_atividade / atividades_vinculadas)
-        vinculados = con.execute(
-            "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
-            "WHERE cod_atividade=? AND valor IS NOT NULL ORDER BY codigo", (cod,)).fetchall()
-        for m in vinculados:
-            if m["codigo"] not in vistos:
-                metas.append(m); vistos.add(m["codigo"])
-        # 3) candidatos do mesmo método oficial não vinculados (ex.: GB/FR para rede/gás)
-        if node["metodo"]:
-            mesmo_metodo = con.execute(
-                "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
-                "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' "
-                "ORDER BY iso, codigo", (node["metodo"],)).fetchall()
-            have = {m["codigo"] for m in metas}
-            metas += [m for m in mesmo_metodo if m["codigo"] not in have]
-        # 4) fallback legado: fatores antigos sem cod_atividade atrelados ao método
-        legados = con.execute(
-            "SELECT codigo, valor, descricao, unidade, iso FROM fatores "
-            "WHERE metodo=? AND valor IS NOT NULL AND unidade<>'coef' AND cod_atividade IS NULL AND iso IS NULL "
-            "AND codigo LIKE ?", (node["metodo"], node["metodo"] + "_%")).fetchall()
-        have = {m["codigo"] for m in metas}
-        metas += [m for m in legados if m["codigo"] not in have]
-        # 5) GRID do país do usuário quando nada do método existe (mantém compatibilidade)
-        if not metas or node["metodo"] == "GRID":
-            g = con.execute("SELECT codigo, valor, descricao, unidade, iso FROM fatores WHERE codigo=?",
-                            (f"GRID_{u['pais']}",)).fetchone()
-            if g and g["codigo"] not in {m["codigo"] for m in metas}:
-                metas.append(g)
+        metodo_atividade = vinculo.get("metodo")
+        fator_id = vinculo.get("fator_id")
+        status = str(vinculo.get("status") or "")
+
+        # label do campo de quantidade com a unidade preferencial do método
+        metodo_info = dados_fatores.get("metodos_info", {}).get(metodo_atividade, {})
+        unidade_metodo = metodo_info.get("unidade") or vinculo.get("unidade_pref") or I.T("unidade")
+        tf_valor.label = I.FM("Quantidade ({un})", un=unidade_metodo.split(",")[0].strip())
+
+        s.update(codigo=cod, metodo=metodo_atividade, unidade=unidade_metodo)
 
         opts = []
-        for m in metas:
-            sufixo = f" [{m['iso']}]" if m["iso"] else ""
-            opts.append(ft.dropdown.Option(m["codigo"],
-                            f"{RF.rotulo(m['codigo'], dict(m))} — {m['valor']:g} kgCO₂e/{m['unidade']}{sufixo}"))
+        candidato = "candidato" in status.lower() and fator_id
+        if candidato:
+            # atividade tem fator candidato — mostrar apenas este fator
+            fator = next((x for x in dados_fatores["fatores"] if x["codigo"] == fator_id), None)
+            if fator:
+                label = (f"{fator['tecnologia']} — {fator['valor']:g} "
+                         f"{fator['unidade_fator']} [{fator.get('iso') or '-'}]")
+                opts.append(ft.dropdown.Option(fator["codigo"], label))
+            else:
+                # fator citado no vínculo ausente da base -> tratar como pendente
+                candidato = False
+
+        if not candidato:
+            # atividade sem fator numérico — informativo + valor manual permitido
+            st_lbl = status.replace("—", "-").strip().title() if status else I.T("Pendente")
+            opts.append(ft.dropdown.Option("sem_fator",
+                        I.FM("⚠️ Método: {m} | Status: {s}", m=metodo_atividade or "-", s=st_lbl)))
+            opts.append(ft.dropdown.Option("pendente", I.T("📋 Fator pendente de cadastro - use valor manual")))
+
         dd_fator.options = opts
-        if opts:
-            dd_fator.value = opts[0].key
-        s.update(metodo=node["metodo"], unidade=(metas[0]["unidade"] if metas else node["unidade"]))
+        dd_fator.value = opts[0].key if (opts and candidato) else None
+
         if e:
             dd_fator.update()
         atualiza_prev()
@@ -135,15 +148,26 @@ def build(app):
     def atualiza_prev(e=None):
         try:
             valor = float(tf_valor.value or 0)
-            f = con.execute("SELECT valor FROM fatores WHERE codigo=?", (dd_fator.value,)).fetchone()
-            n = max(1.0, float(tf_pessoas.value or 1))
-            if f and valor > 0:
-                kg = valor * f["valor"] / n
-                prev.value = I.FM("Prévia: {v} kgCO₂e", v=f"{kg:,.1f}".replace(",", "."))
+
+            if dd_fator.value and dd_fator.value not in SEM_FATOR_KEYS:
+                # buscar fator no banco; fallback para o JSON oficial
+                f = con.execute("SELECT valor FROM fatores WHERE codigo=?",
+                                (dd_fator.value,)).fetchone()
+                if not f:
+                    fj = next((x for x in _load_fatores_json()["fatores"]
+                               if x["codigo"] == dd_fator.value), None)
+                    f = {"valor": fj["valor"]} if fj else None
+                if f:
+                    n = max(1.0, float(tf_pessoas.value or 1))
+                    kg = valor * f["valor"] / n
+                    prev.value = I.FM("Prévia: {v} kgCO₂e", v=f"{kg:,.1f}".replace(",", "."))
+                else:
+                    prev.value = I.T("Prévia: fator não encontrado no banco")
             else:
-                prev.value = I.T("Prévia: —")
+                prev.value = I.T("Prévia: atividade sem fator numérico")
         except Exception:
             prev.value = I.T("Prévia: dados incompletos")
+
         if e:
             prev.update()
 
@@ -162,20 +186,49 @@ def build(app):
         except Exception:
             app.toast(I.T("Informe uma quantidade válida."))
             return
-        frow = con.execute("SELECT * FROM fatores WHERE codigo=?", (dd_fator.value,)).fetchone()
-        if not frow:
-            app.toast(I.T("Escolha um fator de emissão."))
-            return
+
+        # permitir salvamento mesmo sem fator numérico (registro de pendência)
+        fator_codigo = dd_fator.value
+        fator_valor, fator_unidade, fator_metodo = 0.0, "", ""
+
+        if fator_codigo and fator_codigo not in SEM_FATOR_KEYS:
+            frow = con.execute("SELECT * FROM fatores WHERE codigo=?",
+                               (fator_codigo,)).fetchone()
+            if not frow:
+                fj = next((x for x in _load_fatores_json()["fatores"]
+                           if x["codigo"] == fator_codigo), None)
+                if fj:
+                    fator_valor = fj["valor"]
+                    fator_unidade = fj.get("unidade_atividade") or ""
+                    fator_metodo = fj.get("metodo") or ""
+                else:
+                    app.toast(I.T("Escolha um fator de emissão válido."))
+                    return
+            else:
+                fator_valor = frow["valor"]
+                fator_unidade = frow["unidade"]
+                fator_metodo = frow["metodo"]
+        else:
+            app.toast(I.T("Lançamento registrado como pendência (sem fator numérico)"))
+
         n = max(1.0, float(tf_pessoas.value or 1))
-        node = con.execute("SELECT nome, metodo FROM taxonomia WHERE codigo=?", (dd_ativ.value,)).fetchone()
-        kg = valor * frow["valor"] / n
-        con.execute("INSERT INTO registros(usuario_id,codigo,grupo,atividade,metodo,valor,unidade,fator,pessoas,"
-                    "co2e_kg,tipo_periodo,ano,mes,obs,origem,criado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (int(dd_user.value), dd_ativ.value, B.grupo_de_codigo(dd_ativ.value),
-                     node["nome"] if node else dd_ativ.value, frow["metodo"], valor, frow["unidade"],
-                     frow["valor"], n, round(kg, 3), dd_tipo.value, int(dd_ano.value),
-                     int(dd_mes.value) if dd_tipo.value == "M" else None, tf_obs.value or None, "manual", db.now()))
+        node = con.execute("SELECT nome, metodo FROM taxonomia WHERE codigo=?",
+                           (dd_ativ.value,)).fetchone()
+
+        kg = valor * fator_valor / n if fator_valor > 0 else 0.0
+
+        con.execute("""INSERT INTO registros(usuario_id,codigo,grupo,atividade,metodo,valor,unidade,fator,pessoas,
+            co2e_kg,tipo_periodo,ano,mes,obs,origem,criado_em)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (int(dd_user.value), dd_ativ.value, B.grupo_de_codigo(dd_ativ.value),
+             node["nome"] if node else dd_ativ.value,
+             fator_metodo or (node["metodo"] if node else ""),
+             valor, fator_unidade or "",
+             fator_valor, n, round(kg, 3), dd_tipo.value, int(dd_ano.value),
+             int(dd_mes.value) if dd_tipo.value == "M" else None,
+             tf_obs.value or None, "manual", db.now()))
         con.commit()
+
         app.toast(I.FM("Lançado: {v} kgCO₂e", v=f"{kg:,.1f}".replace(",", ".")))
         app.refresh()
 
