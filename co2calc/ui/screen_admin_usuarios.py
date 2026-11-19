@@ -14,8 +14,25 @@ from .widgets import card, title, sub, btn, num_field
 COR_USUARIO = [B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
 
 
+def _safe_update(*controls):
+    """Atualiza controles em tempo real; ignora quando ainda não montados na
+    página (ex.: durante o build inicial — os valores já estão no objeto que
+    será montado em seguida). NUNCA chama app.refresh() aqui: isso causaria
+    recursão infinita build -> recarregar -> refresh -> build."""
+    for c in controls:
+        try:
+            c.update()
+        except Exception:
+            pass
+
+
 def build(app):
     con = app.con
+    # reconecta se a conexão do app estiver fechada (mesma auto-cura da aba Usuários)
+    try:
+        con.execute("SELECT 1")
+    except Exception:
+        app.con = con = db.init_db()
     paises = [dict(p) for p in con.execute("SELECT iso, nome FROM paises ORDER BY nome").fetchall()]
     opts_pais = [ft.dropdown.Option(p["iso"], p["nome"]) for p in paises]
 
@@ -70,10 +87,7 @@ def build(app):
                              color="#C0392B"),
                 ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 padding=12))
-        try:
-            col_lista.update()
-        except Exception:
-            app.refresh()
+        _safe_update(col_lista)
 
     def editar(uid):
         u = con.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
@@ -88,19 +102,13 @@ def build(app):
         dd_pais.value = u["pais"]
         tf_pp.value = str(u["pessoas"])
         tf_obs.value = u["obs"] or ""
-        try:
-            lbl_form.update(); bt_salvar.update(); bt_cancelar.update()
-            tf_nome.update(); dd_pais.update(); tf_pp.update(); tf_obs.update()
-        except Exception:
-            app.refresh()
+        _safe_update(lbl_form, bt_salvar, bt_cancelar,
+                     tf_nome, dd_pais, tf_pp, tf_obs)
 
     def cancelar(e=None):
         _modo_edicao()
-        try:
-            lbl_form.update(); bt_salvar.update(); bt_cancelar.update()
-            tf_nome.update(); dd_pais.update(); tf_pp.update(); tf_obs.update()
-        except Exception:
-            app.refresh()
+        _safe_update(lbl_form, bt_salvar, bt_cancelar,
+                     tf_nome, dd_pais, tf_pp, tf_obs)
 
     def salvar(e=None):
         nome = (tf_nome.value or "").strip()
