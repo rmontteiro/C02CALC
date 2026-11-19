@@ -37,6 +37,18 @@ def test_catalogo_i18n():
     assert not missing, f"{len(missing)} chaves sem tradução"
 
 
+def test_gate_a_cada_abertura():
+    import app as A
+    con0 = db.init_db(os.environ["CO2CALC_DB"])
+    db.set_ajuste(con0, "idioma", "en")
+    con0.close()
+    a = A.App(FakePage())
+    assert I.get_lang() == "en"           # memória do idioma salvo
+    assert not a.lang_ready and not a.nav.visible  # mas a tela de escolha volta sempre
+    a.set_language("es")
+    assert a.lang_ready and a.nav.visible
+
+
 def test_gate_de_idioma_na_primeira_execucao():
     import app as A
     a = A.App(FakePage())

@@ -41,9 +41,14 @@ class App:
         self.state = State(uid=None, ano=datetime.date.today().year, mes=datetime.date.today().month,
                            modo="mês", rota="home")
         self.con = db.init_db()
-        lang = os.environ.get("CO2CALC_LANG") or db.get_ajuste(self.con, "idioma")
-        self.lang_ready = lang in I.CODES
-        I.set_lang(lang if self.lang_ready else "pt")
+        _env = os.environ.get("CO2CALC_LANG")
+        _saved = db.get_ajuste(self.con, "idioma")
+        if _env in I.CODES:
+            I.set_lang(_env)          # automação/testes: entra direto
+            self.lang_ready = True
+        else:
+            I.set_lang(_saved if _saved in I.CODES else "pt")
+            self.lang_ready = False   # tela de idioma a cada abertura (escolha prévia destacada)
         page.title = I.T("CO2calc — pegada de carbono pessoal")
         page.theme_mode = ft.ThemeMode.LIGHT
         page.theme = W.theme()

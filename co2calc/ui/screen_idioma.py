@@ -20,12 +20,18 @@ def build(app):
     col = []
     for code, headline, paises, rodape in CARDS:
         meta = next(l for l in I.LANGS if l["code"] == code)
-        col.append(card(ft.Column([
+        salvo = code == I.get_lang()
+        c = card(ft.Column([
             img64(os.path.join(BASE, meta["flag"]), width=216),
             ft.Text(meta["rotulo"], size=21, weight=ft.FontWeight.BOLD, color=B.INK),
             sub(headline),
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
-            on_click=lambda e, c=code: app.set_language(c), expand=True))
+            ft.Text(("✓  ·  atual" if code == "pt" else "✓  ·  current" if code == "en" else "✓  ·  actual")
+                    if salvo else " ", size=11.5, weight=ft.FontWeight.W_600, color=B.PRIMARY_DARK),
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6),
+            on_click=lambda e, c2=code: app.set_language(c2), expand=True)
+        if salvo:
+            c.border = ft.border.all(2.5, B.PRIMARY)
+        col.append(c)
 
     top = next(c for c in CARDS if c[0] == "pt")  # rodape trilingue fixo
     return ft.Column([
