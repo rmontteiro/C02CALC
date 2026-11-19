@@ -245,17 +245,32 @@ def _sec_hist(app):
                           (itens or [sub(I.T("nenhuma baseline salva"))]), spacing=8))
 
 
+def _nome_sugerido(base, ano):
+    import datetime as _dt
+    return f"CO2calc_{base}_{ano}_{_dt.date.today().strftime('%Y%m%d')}.pdf"
+
+
 def _export_usuario(app):
     ctx = _ctx(app)
     uid = ctx["uids"][0]
-    path = reports.relatorio_usuario(ctx["con"], uid, int(ctx["ano"]))
-    app.toast(I.FM("PDF gerado: {p}", p=path))
+    u = ctx["con"].execute("SELECT nome FROM usuarios WHERE id=?", (uid,)).fetchone()
+    nome = (u["nome"] if u else "usuario").replace(" ", "_")
+    ano = int(ctx["ano"])
+
+    def gerador(caminho):
+        reports.relatorio_usuario(ctx["con"], uid, ano, caminho=caminho)
+
+    app.salvar_pdf(gerador, f"CO2calc_{nome}_{ano}.pdf")
 
 
 def _export_comp(app):
     ctx = _ctx(app)
-    path = reports.relatorio_comparativo(ctx["con"], ctx["uids"], int(ctx["ano"]), list(ctx["sel_grupos"]))
-    app.toast(f"PDF gerado: {path}")
+    uids, ano, grupos = list(ctx["uids"]), int(ctx["ano"]), list(ctx["sel_grupos"])
+
+    def gerador(caminho):
+        reports.relatorio_comparativo(ctx["con"], uids, ano, grupos, caminho=caminho)
+
+    app.salvar_pdf(gerador, f"CO2calc_comparativo_{ano}.pdf")
 
 
 def _export_bar(app):

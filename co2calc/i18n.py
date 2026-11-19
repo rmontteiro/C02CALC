@@ -237,6 +237,12 @@ _CAT = {
     "Relatório do 1º usuário · {ano}": ("First user's report · {ano}", "Reporte del 1er usuario · {ano}"),
     "Comparativo · {ano}": ("Comparison · {ano}", "Comparativa · {ano}"),
     "PDF gerado: {p}": ("PDF generated: {p}", "PDF generado: {p}"),
+    "Salvar relatório PDF": ("Save PDF report", "Guardar informe PDF"),
+    "Exportação cancelada.": ("Export cancelled.", "Exportación cancelada."),
+    "⚠️ Erro ao gerar o PDF: {e}": ("⚠️ Error generating the PDF: {e}", "⚠️ Error al generar el PDF: {e}"),
+    "⚠️ Não foi possível abrir a janela de seleção: {e}": ("⚠️ Could not open the selection window: {e}", "⚠️ No se pudo abrir la ventana de selección: {e}"),
+    "✅ Relatório salvo em: {p}": ("✅ Report saved to: {p}", "✅ Informe guardado en: {p}"),
+    "⚠️ Falha ao salvar o PDF: {e}": ("⚠️ Failed to save the PDF: {e}", "⚠️ Error al guardar el PDF: {e}"),
     "🧭 Baselines da calculadora rápida (comparar anos)": (
         "🧭 Quick-calculator baselines (compare years)", "🧭 Baselines de la calculadora rápida (comparar años)"),
     "{nome} — baseline {data}": ("{nome} — baseline {data}", "{nome} — baseline {data}"),

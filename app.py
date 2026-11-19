@@ -64,6 +64,14 @@ class App:
 
         self.body = ft.Container(expand=True, padding=ft.padding.symmetric(14, 18))
 
+        # FilePicker global — diálogos nativos "Salvar como…" para exportar PDFs
+        self.file_picker = ft.FilePicker(on_result=self._on_file_picked)
+        try:
+            page.overlay.append(self.file_picker)  # página real (desktop/web)
+        except AttributeError:
+            page.add(self.file_picker)             # páginas mínimas de teste
+        self._pending_save = None  # (gerador_callable, sugestao_nome) aguardando escolha do usuário
+
         self.nav = ft.NavigationBar(
             selected_index=0, label_behavior=ft.NavigationBarLabelBehavior.ALWAYS_SHOW,
             elevation=8, height=66,
@@ -139,6 +147,61 @@ class App:
     def toast(self, msg):
         snack = ft.SnackBar(ft.Text(msg, size=13), bgcolor=B.PRIMARY_DARK, action="OK")
         self.page.open(snack)
+
+    # ---------- exportação de PDF com escolha dinâmica de pasta ----------
+    def salvar_pdf(self, gerador, sugestao_nome):
+        """Gera o PDF em arquivo temporário e abre o diálogo nativo 'Salvar como…'
+        para o usuário escolher a pasta destino. `gerador` é um callable que recebe
+        o caminho absoluto de destino e escreve o PDF nele."""
+        import tempfile
+        fd, tmp = tempfile.mkstemp(prefix="co2calc_", suffix=".pdf")
+        os.close(fd)
+        try:
+            gerador(tmp)
+        except Exception as ex:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            self.toast(I.FM("⚠️ Erro ao gerar o PDF: {e}", e=ex))
+            return
+        self._pending_save = (tmp, gerador)
+        try:
+            self.file_picker.save_file(dialog_title=I.T("Salvar relatório PDF"),
+                                       file_name=sugestao_nome,
+                                       allowed_extensions=["pdf"])
+        except Exception as ex:
+            self._pending_save = None
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            self.toast(I.FM("⚠️ Não foi possível abrir a janela de seleção: {e}", e=ex))
+
+    def _on_file_picked(self, e: ft.FilePickerResultEvent):
+        pend = self._pending_save
+        self._pending_save = None
+        if not pend:
+            return
+        tmp, gerador = pend
+        if not e.path:  # usuário cancelou a janela
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            self.toast(I.T("Exportação cancelada."))
+            return
+        dest = e.path if e.path.lower().endswith(".pdf") else e.path + ".pdf"
+        try:
+            import shutil
+            shutil.move(tmp, dest)
+            self.toast(I.FM("✅ Relatório salvo em: {p}", p=dest))
+        except Exception as ex:
+            try:
+                gerador(dest)  # fallback: regenera direto no destino escolhido
+                self.toast(I.FM("✅ Relatório salvo em: {p}", p=dest))
+            except Exception as ex2:
+                self.toast(I.FM("⚠️ Falha ao salvar o PDF: {e}", e=ex2))
 
 
 def main(page: ft.Page):
