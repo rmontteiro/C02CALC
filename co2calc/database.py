@@ -345,6 +345,47 @@ def por_grupo(con, uid, ano, mes=None):
     return {r["grupo"]: r["s"] for r in con.execute(q, args).fetchall()}
 
 
+def por_setor_usuarios(con, ano, mes=None, usuario_ids=None):
+    """kgCO2e por SETOR (letra A..J da taxonomia nivel=1) e por usuario.
+
+    ADITIVO (visao por setor do Monitorar/relatorios). Semantica de periodo
+    identica a total_usuario(): mes informado -> mensais do mes + anuais do
+    ano; mes=None -> ano todo. usuario_ids=None -> todos os usuarios.
+    Retorna (dados, nomes) onde dados = {letra: {usuario_id: kg}} contendo
+    SEMPRE as 10 letras A..J (zeradas quando nao ha dado), na ordem A..J, e
+    nomes = {letra: nome do setor (PT do seed)}. Limitacao documentada:
+    registros cujo codigo nao comeca com A..J (ex.: 'QUICK' da calculadora
+    rapida) ficam FORA desta visao por setor.
+    """
+    letras = [chr(ord("A") + i) for i in range(10)]
+    nomes = {r["codigo"]: r["nome"] for r in con.execute(
+        "SELECT codigo, nome FROM taxonomia WHERE nivel=1 ORDER BY codigo")}
+    out = {L: {} for L in letras}
+    uids = [int(x) for x in usuario_ids] if usuario_ids else \
+        [r["id"] for r in con.execute("SELECT id FROM usuarios")]
+    if not uids:
+        return out, nomes
+    ph = ",".join("?" * len(uids))
+    if mes:
+        q = ("SELECT substr(r.codigo,1,1) AS letra, r.usuario_id AS uid, "
+             "SUM(r.co2e_kg) AS kg FROM registros r "
+             "WHERE r.ano=? AND (r.mes=? OR r.tipo_periodo='A') "
+             f"AND r.usuario_id IN ({ph}) GROUP BY letra, uid")
+        args = [ano, mes] + uids
+    else:
+        q = ("SELECT substr(r.codigo,1,1) AS letra, r.usuario_id AS uid, "
+             "SUM(r.co2e_kg) AS kg FROM registros r "
+             f"WHERE r.ano=? AND r.usuario_id IN ({ph}) GROUP BY letra, uid")
+        args = [ano] + uids
+    for r in con.execute(q, args).fetchall():
+        if r["letra"] in out:            # ignora codigos fora de A..J (QUICK etc.)
+            out[r["letra"]][int(r["uid"])] = float(r["kg"] or 0.0)
+    for L in letras:                     # garante presenca das 10 letras p/ cada uid
+        for u in uids:
+            out[L].setdefault(u, 0.0)
+    return out, nomes
+
+
 def comparativo_usuarios(con, ano, grupos=None):
     q = "SELECT usuario_id, grupo, SUM(co2e_kg) s FROM registros WHERE ano=? AND tipo_periodo='M'"
     args = [ano]

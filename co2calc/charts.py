@@ -222,3 +222,63 @@ def comp_usuarios(matriz, uids, nomes, titulo="Comparativo entre usuários (kgCO
         ax.legend(fontsize=6.8, ncol=4, frameon=False, loc="upper left", labelcolor=T.CINZA_TEXTO)
     fig.tight_layout()
     return _save(fig, name + ".png")
+
+
+def comparativo_setores(dados, nomes, usuarios_sel, titulo_setor_fn=None,
+                        fmt_valor=None, nome_usuario_fn=None,
+                        titulo="Emissões por setor — comparativo entre usuários",
+                        name="comparativo_setores", ncols=5):
+    """ADITIVO — small multiples Tufte: um painel por setor (A..J), barras
+    horizontais, uma por usuario selecionado. Escala COMUM global
+    (vmax = max de todos os paineis/usuarios) para comparacao honesta entre
+    setores e entre usuarios. Cor da barra = cor do usuario (identifica o
+    usuario cruzando os 10 paineis). Rotulo direto: nome do usuario no eixo y
+    e VALOR na ponta da barra (fmt_valor, pt-BR) — sem legenda global (tinta
+    desperdicada). Setor zerado em todos os usuarios -> painel 'sem dados'
+    com linha cinza (honra 'toda a lista A..J'). Spines top/right off, base
+    zero, grade vertical sutil via tufte_style. Segue o padrao das demais
+    funcoes: retorna o caminho PNG via _save."""
+    from . import i18n as _I
+    letras = [chr(ord("A") + i) for i in range(10)]
+    titulo_setor_fn = titulo_setor_fn or (lambda L: nomes.get(L, L))
+    fmt_valor = fmt_valor or (lambda v: f"{v:,.0f}".replace(",", "."))
+    nome_usuario_fn = nome_usuario_fn or (lambda uid, nome, cor: nome)
+    paleta = [B.PRIMARY, B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
+    sel = []
+    for i, item in enumerate(usuarios_sel):
+        uid, nome = item[0], item[1]
+        cor = (item[2] if len(item) > 2 and item[2] else None) or paleta[i % len(paleta)]
+        sel.append((int(uid), nome_usuario_fn(uid, nome, cor), cor))
+    uids_ord = [s[0] for s in sel]
+    vmax = max((dados.get(L, {}).get(u, 0.0) for L in letras for u, _, _ in sel), default=0.0) or 1.0
+
+    nrows = math.ceil(len(letras) / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.1 * ncols, 2.35 * nrows), squeeze=False)
+    for i, L in enumerate(letras):
+        ax = axes[i // ncols][i % ncols]
+        vals = [dados.get(L, {}).get(u, 0.0) for u, _, _ in sel]
+        if max(vals, default=0.0) <= 0.0:      # setor sem dado em nenhum usuario
+            ax.text(0.5, 0.55, _I.T("sem dados"), ha="center", va="center",
+                    fontsize=9, color=B.INK_SOFT, transform=ax.transAxes)
+            ax.axhline(0.32, xmin=0.12, xmax=0.88, color=T.CINZA_SUAVE, lw=1.2)
+            ax.set_title(f"{L} · {titulo_setor_fn(L)}", fontsize=8.5, color=T.CINZA_TEXTO,
+                         weight="bold", pad=5)
+            ax.axis("off")
+            continue
+        ys = range(len(sel))
+        ax.barh(list(ys), vals, color=[c for _, _, c in sel], height=0.6)
+        for y, v in zip(ys, vals):
+            ax.text(v, y, " " + fmt_valor(v), va="center", fontsize=7, color=B.INK)
+        ax.set_yticks(list(ys)); ax.set_yticklabels([n for _, n, _ in sel], fontsize=7.5)
+        ax.invert_yaxis()                      # primeira barra no topo
+        ax.set_xlim(0, vmax * 1.12)            # escala comum global + folga p/ rotulo
+        T.estilo_tufte(ax, eixo_y=False, grid_y=False, grid_x=True)
+        T.base_zero(ax, eixo="x")
+        ax.tick_params(axis="x", labelsize=7)
+        ax.set_title(f"{L} · {titulo_setor_fn(L)}", fontsize=8.5, color=T.CINZA_TEXTO,
+                     weight="bold", pad=5)
+    for j in range(len(letras), nrows * ncols):
+        axes[j // ncols][j % ncols].axis("off")
+    fig.suptitle(_I.T(titulo), fontsize=11, color=B.INK, y=1.0)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    return _save(fig, name + ".png")

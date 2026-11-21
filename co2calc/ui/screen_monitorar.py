@@ -27,7 +27,7 @@ def _safe_build(app):
     except Exception as ex:
         _log_err(ex); partes.append(card(sub(I.FM("⚠️ filtros indisponíveis: {e}", e=ex))))
     for key, fn in (("trend", _sec_trend), ("donut", _sec_donut), ("bars", _sec_bars),
-                    ("comp", _sec_comp), ("tbl", _sec_tbl), ("hist", _sec_hist)):
+                    ("comp", _sec_comp), ("setor", _sec_setor), ("tbl", _sec_tbl), ("hist", _sec_hist)):
         try:
             w = fn(app)
             if w is not None:
@@ -68,7 +68,9 @@ def _ctx(app):
     usuarios = db.list_usuarios(con)
     if not usuarios:
         return None
-    w = st.setdefault("widgets", {"trend": True, "donut": True, "bars": True, "comp": True, "tbl": True, "hist": True})
+    w = st.setdefault("widgets", {"trend": True, "donut": True, "bars": True, "comp": True,
+                                  "setor": True, "tbl": True, "hist": True})
+    w.setdefault("setor", True)            # aditivo: secao por setor A..J
     sel_grupos = st.setdefault("grupos", set(GRPS))
     known = {str(x["id"]) for x in usuarios}
     sel_uids = st.setdefault("monitor_uids", set())
@@ -141,7 +143,7 @@ def _filtros(app):
         ft.Row([ft.Text(I.T("Usuários:"), size=12, color=B.INK_SOFT)] + chips_user, wrap=True, spacing=8),
         ft.Row([dd_ano,
                 mk_switch("trend", I.T("Tendência")), mk_switch("donut", I.T("Composição")), mk_switch("bars", I.T("Tipologia")),
-                mk_switch("comp", I.T("Comparativo")), mk_switch("tbl", I.T("Tabela")), mk_switch("hist", I.T("Baselines"))],
+                mk_switch("comp", I.T("Comparativo")), mk_switch("setor", I.T("Setores")), mk_switch("tbl", I.T("Tabela")), mk_switch("hist", I.T("Baselines"))],
                wrap=True, spacing=14),
     ], spacing=10))
 
@@ -208,6 +210,44 @@ def _sec_comp(app):
                        ft.Row([btn(I.T("Exportar comparativo PDF"), lambda e: _export_comp(app), filled=False,
                                    icon=ft.Icons.PICTURE_AS_PDF)], spacing=8)
                        if len(uids) >= 2 else sub(I.T("selecione \u2265 2 usuários para exportar o comparativo")))
+
+
+NOTA_SETOR = ("escala comum entre todos os painéis (comparação honesta); cor = usuário; "
+              "registros fora dos setores A–J (ex.: estimativa rápida 'QUICK') não entram nesta visão")
+
+
+def _setor_png(con, uids, ano, tag, ncols=5):
+    """ADITIVO — helper compartilhado: gera o PNG comparativo por setor a
+    partir dos MESMOS usuarios/periodo ja em estado na tela (sem seletor
+    novo). Reusado pela tela Monitorar e pelos relatorios PDF."""
+    dados, nomes = db.por_setor_usuarios(con, ano, None, uids)
+    cores_map = {}
+    try:
+        cores_map = {int(r["id"]): r["cor"] for r in
+                     con.execute("SELECT id, cor FROM usuarios").fetchall()}
+    except Exception:
+        pass
+    usuarios_sel = []
+    for uid in uids:
+        r = con.execute("SELECT nome FROM usuarios WHERE id=?", (uid,)).fetchone()
+        usuarios_sel.append((int(uid), r["nome"] if r else f"#{uid}", cores_map.get(int(uid))))
+    return charts.comparativo_setores(
+        dados, nomes, usuarios_sel,
+        titulo_setor_fn=lambda L: nomes.get(L, L),      # nomes PT do banco (igual dd_setor)
+        fmt_valor=lambda v: f"{v:,.0f} kg".replace(",", "."),
+        name=f"set_{tag}", ncols=ncols)
+
+
+def _sec_setor(app):
+    """Nova secao (aditiva): Emissões por setor — comparativo entre usuários.
+    Reusa a MESMA lista de usuarios selecionados e o MESMO ano ja em estado;
+    nao cria controle novo."""
+    ctx = _ctx(app)
+    if ctx is None or not ctx["w"].get("setor", True):
+        return None
+    p = _setor_png(ctx["con"], ctx["uids"], int(ctx["ano"]), ctx["ano"])
+    return _chart_card(I.T("\U0001F9E9 Emissões por setor — comparativo entre usuários"), p,
+                       sub(I.T(NOTA_SETOR)))
 
 
 def _sec_tbl(app):

@@ -16,6 +16,10 @@ from . import charts
 from . import database as _db
 OUT_DIR = os.path.join(_db.DATA_DIR, "relatorios")
 
+NOTA_SETOR_PDF = ("escala comum entre todos os painéis (comparação honesta); cor = usuário; "
+                  "registros fora dos setores A–J (ex.: estimativa rápida 'QUICK') não entram nesta visão")
+
+
 def _fmt(x):
     return f"{x:,.1f}".replace(",", ".")
 
@@ -60,6 +64,7 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
     os.makedirs(OUT_DIR, exist_ok=True)
     periodo = f"{mes:02d}/{ano}" if mes else str(ano)
     tag = periodo.replace("/", "-")
+    ts_tag = datetime.datetime.now().strftime("%H%M%S")   # unicidade p/ PNGs por setor
     caminho = caminho or os.path.join(OUT_DIR, f"CO2calc_{u['nome'].replace(' ','_')}_{periodo.replace('/','-')}.pdf")
     CORES_USUARIO = [B.PRIMARY, B.ACCENT_2, B.ACCENT_3, B.ACCENT_4, B.ACCENT_5, B.ACCENT, "#16A085"]
 
@@ -149,6 +154,28 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
         p_cp = charts.comp_usuarios(matriz, ids_rel, nomes, name=f"rep_cp_{tag}")
         doc.append(RLImage(p_cp, width=165 * mm, height=82 * mm)); doc.append(Spacer(1, 3 * mm))
 
+    # 6) ADITIVO — Emissões por setor A–J em small multiples Tufte (escala
+    #    comum; cor = usuário). No individual vira um painel por usuario com o
+    #    proprio conjunto de setores; a visao por letra cobre G,H,I,J que os 6
+    #    grupos da tipologia nao alcançam. Limitacao: codigos fora de A..J
+    #    (ex.: 'QUICK' da calculadora rapida) ficam fora desta visao.
+    def _fmt_set(v):
+        return f"{v:,.0f} kg".replace(",", ".")
+    dados_set, nomes_set = db.por_setor_usuarios(con, ano, mes, ids_rel)
+    cores_map = {}
+    try:
+        cores_map = {int(r["id"]): r["cor"] for r in con.execute("SELECT id, cor FROM usuarios").fetchall()}
+    except Exception:
+        pass
+    sel_set = [(int(i), _nome_de(i), cores_map.get(int(i))) for i in ids_rel]
+    p_set = charts.comparativo_setores(dados_set, nomes_set, sel_set,
+                                       titulo_setor_fn=lambda L: nomes_set.get(L, L),
+                                       fmt_valor=_fmt_set,
+                                       name=f"rep_set_{tag}_{ids_rel[0]}_{ts_tag}", ncols=5)
+    doc.append(RLImage(p_set, width=170 * mm, height=100 * mm)); doc.append(Spacer(1, 2 * mm))
+    doc.append(Paragraph(I.T(NOTA_SETOR_PDF), st["Sm"]))
+    doc.append(Spacer(1, 3 * mm))
+
     doc.append(Paragraph(I.T("Lançamentos do período"), st["H"]))
     q = ("SELECT atividade, grupo, valor, unidade, co2e_kg, CASE WHEN tipo_periodo='A' THEN 'anual' ELSE 'mensal' END tp"
          " FROM registros WHERE usuario_id=? AND ano=?" + (" AND (mes=? OR tipo_periodo='A')" if mes else "") +
@@ -200,6 +227,23 @@ def relatorio_comparativo(con, uids, ano, grupos=None, caminho=None):
     doc.append(RLImage(p_tr, width=165*mm, height=78*mm)); doc.append(Spacer(1, 3*mm))
     p = charts.comp_usuarios(matriz, uids, nomes, name=f"_c_{ts}")
     doc.append(RLImage(p, width=165*mm, height=82*mm)); doc.append(Spacer(1, 4*mm))
+    # ADITIVO — Emissões por setor A–J em small multiples Tufte (escala comum;
+    # cor = usuario), apos o comparativo por grupo. Limitacao: codigos fora de
+    # A..J (ex.: 'QUICK' da calculadora rapida) ficam fora desta visao.
+    dados_set, nomes_set = db.por_setor_usuarios(con, ano, None, uids)
+    cores_map = {}
+    try:
+        cores_map = {int(r["id"]): r["cor"] for r in con.execute("SELECT id, cor FROM usuarios").fetchall()}
+    except Exception:
+        pass
+    sel_set = [(int(i), nm, cores_map.get(int(i))) for i, nm in zip(uids, nomes)]
+    p_set = charts.comparativo_setores(dados_set, nomes_set, sel_set,
+                                       titulo_setor_fn=lambda L: nomes_set.get(L, L),
+                                       fmt_valor=lambda v: f"{v:,.0f} kg".replace(",", "."),
+                                       name=f"rep_cset_{ts}", ncols=5)
+    doc.append(RLImage(p_set, width=170*mm, height=100*mm)); doc.append(Spacer(1, 2*mm))
+    doc.append(Paragraph(I.T(NOTA_SETOR_PDF), st["Sm"]))
+    doc.append(Spacer(1, 4*mm))
     data = [[I.T("Usuário"), I.T("País"), I.T("Pessoas"), I.T("Total ano (kgCO₂e)"), I.T("tCO₂e/per capita"), I.T("Score"), I.T("Classificação")]]
     for uid, nm in zip(uids, nomes):
         u = con.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()

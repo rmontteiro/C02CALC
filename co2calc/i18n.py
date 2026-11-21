@@ -327,6 +327,18 @@ _CAT = {
     "Comparativo entre usuários (kgCO₂e no período)": (
         "User comparison (kgCO₂e in period)", "Comparativa entre usuarios (kgCO₂e en el período)"),
     "/ 100 · ": ("/ 100 · ", "/ 100 · "),
+    # ---- visao por setor A..J (comparativo_setores / Monitorar / PDF)
+    "Emissões por setor — comparativo entre usuários": (
+        "Emissions by sector — user comparison", "Emisiones por sector — comparativa entre usuarios"),
+    "🧩 Emissões por setor — comparativo entre usuários": (
+        "🧩 Emissions by sector — user comparison", "🧩 Emisiones por sector — comparativa entre usuarios"),
+    "Setores": ("Sectors", "Sectores"),
+    ("escala comum entre todos os painéis (comparação honesta); cor = usuário; "
+     "registros fora dos setores A–J (ex.: estimativa rápida 'QUICK') não entram nesta visão"): (
+        "common scale across all panels (honest comparison); color = user; "
+        "records outside sectors A–J (e.g. quick estimate 'QUICK') are not included in this view",
+        "escala común entre todos los paneles (comparación honesta); color = usuario; "
+        "registros fuera de los sectores A–J (p. ej. estimación rápida 'QUICK') no entran en esta vista"),
     # ---- relatórios PDF
     "Relatório de emissões — {nome}": ("Emissions report — {nome}", "Reporte de emisiones — {nome}"),
     "Período: {p} · Pessoas: {n} · Gerado em {ts}": ("Period: {p} · People: {n} · Generated at {ts}", "Período: {p} · Personas: {n} · Generado el {ts}"),
