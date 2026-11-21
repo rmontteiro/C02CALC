@@ -2,7 +2,7 @@
 """Relatórios PDF do CO2calc (reportlab) — 'pequenos relatórios' de 1–2 págs:
 por usuário e comparativo, com gráficos PNG e fontes citadas."""
 import os, datetime
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -42,7 +42,7 @@ def _header(doc, ss, titulo, sub):
     logo = _logo()
     cell = Paragraph(f"<b>{titulo}</b><br/><font size='8' color='#5E7A6D'>{sub}</font>", ss["T"])
     if logo:
-        t = Table([[logo, cell]], colWidths=[22*mm, 148*mm])
+        t = Table([[logo, cell]], colWidths=[22*mm, 250*mm])
         t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                                ("LEFTPADDING", (1, 0), (1, 0), 6),
                                ("RIGHTPADDING", (0, 0), (0, 0), 0)]))
@@ -105,7 +105,7 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
             [I.T("Per capita (tCO₂e/ano)"), _fmt(anuais/1000/max(1,u['pessoas']))],
             [I.T("Média nacional (tCO₂e/per capita)"), _fmt(db.media_pais(con, u['pais']))],
             [I.T("Pontuação CO2calc (0–100)"), f"{score_v:.0f} — {I.T(lbl)}"]]
-    t = Table(data, colWidths=[110*mm, 55*mm])
+    t = Table(data, colWidths=[150*mm, 70*mm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0,0),(0,-1), HexColor(B.BG_DARK)), ("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),
         ("FONTSIZE",(0,0),(-1,-1),8.5), ("TEXTCOLOR",(0,0),(-1,-1),HexColor(B.INK)),
@@ -130,7 +130,7 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
     titulo_tr = I.FM("Tendência mensal — {nome} · {ano}",
                      nome=(I.FM("{n} usuários", n=len(ids_rel)) if multi else u["nome"]), ano=str(ano))
     p_tr = charts.line_trend(serie, titulo_tr, name=f"rep_tr_{tag}_{ids_rel[0]}", series=series)
-    doc.append(RLImage(p_tr, width=165 * mm, height=78 * mm)); doc.append(Spacer(1, 3 * mm))
+    doc.append(RLImage(p_tr, width=240 * mm, height=100 * mm)); doc.append(Spacer(1, 3 * mm))
 
     # 2) Gauge de score (mesmo painel do dashboard/início)
     media = db.media_pais(con, u["pais"])
@@ -138,12 +138,12 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
     p_gg = charts.gauge(score_v, lbl, f"{an:,.0f} kg".replace(",", "."),
                         I.FM("média nacional {v} t/ano", v=f"{media:.2f}"),
                         name=f"rep_gg_{tag}_{uid}")
-    doc.append(RLImage(p_gg, width=62 * mm, height=62 * mm)); doc.append(Spacer(1, 3 * mm))
+    doc.append(RLImage(p_gg, width=78 * mm, height=78 * mm)); doc.append(Spacer(1, 3 * mm))
 
     # 3) Rosca (composição) + 4) barras horizontais (tipologia) lado a lado
     p1 = charts.donut(gr, I.T("Composição por tipologia"), name=f"_d_{uid}_{tag}")
     p2 = charts.bars_grupos(gr, I.T("kgCO₂e por tipologia"), name=f"_b_{uid}_{tag}")
-    tbl = Table([[RLImage(p1, width=82*mm, height=60*mm), RLImage(p2, width=82*mm, height=60*mm)]])
+    tbl = Table([[RLImage(p1, width=110*mm, height=76*mm), RLImage(p2, width=110*mm, height=76*mm)]])
     tbl.setStyle(TableStyle([("ALIGN", (0,0),(-1,-1), "CENTER"), ("VALIGN", (0,0),(-1,-1), "TOP")]))
     doc.append(tbl); doc.append(Spacer(1, 3 * mm))
 
@@ -152,7 +152,7 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
         matriz = db.comparativo_usuarios(con, ano, grupos)
         nomes = [_nome_de(i) for i in ids_rel]
         p_cp = charts.comp_usuarios(matriz, ids_rel, nomes, name=f"rep_cp_{tag}")
-        doc.append(RLImage(p_cp, width=165 * mm, height=82 * mm)); doc.append(Spacer(1, 3 * mm))
+        doc.append(RLImage(p_cp, width=240 * mm, height=105 * mm)); doc.append(Spacer(1, 3 * mm))
 
     # 6) ADITIVO — Emissões por setor A–J em small multiples Tufte (escala
     #    comum; cor = usuário). No individual vira um painel por usuario com o
@@ -172,7 +172,7 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
                                        titulo_setor_fn=lambda L: nomes_set.get(L, L),
                                        fmt_valor=_fmt_set,
                                        name=f"rep_set_{tag}_{ids_rel[0]}_{ts_tag}", ncols=5)
-    doc.append(RLImage(p_set, width=170 * mm, height=100 * mm)); doc.append(Spacer(1, 2 * mm))
+    doc.append(RLImage(p_set, width=250 * mm, height=130 * mm)); doc.append(Spacer(1, 2 * mm))
     doc.append(Paragraph(I.T(NOTA_SETOR_PDF), st["Sm"]))
     doc.append(Spacer(1, 3 * mm))
 
@@ -188,7 +188,7 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
         data.append([Paragraph(str(r["atividade"] or r["codigo"]), st["Sm"]),
                      Paragraph(I.T(str(r["tp"])), st["Sm"]),
                      _fmt(r["valor"]), str(r["unidade"]), _fmt(r["co2e_kg"]), gm["emoji"]])
-    t = Table(data, colWidths=[78*mm, 18*mm, 22*mm, 18*mm, 21*mm, 10*mm])
+    t = Table(data, colWidths=[150*mm, 22*mm, 26*mm, 22*mm, 24*mm, 12*mm])
     t.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),HexColor(B.PRIMARY)), ("TEXTCOLOR",(0,0),(-1,0),HexColor("#FFFFFF")),
         ("FONTSIZE",(0,0),(-1,-1),7.6), ("TEXTCOLOR",(0,1),(-1,-1),HexColor(B.INK)),
@@ -197,7 +197,7 @@ def relatorio_usuario(con, uid, ano, mes=None, caminho=None, uids=None, grupos=N
         ("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     doc.append(t); doc.append(Spacer(1, 3*mm))
     doc.append(Paragraph(I.T("Metodologia: fatores Defra/DESNZ (WTT incluso), redes elétricas IEA/Ember e médias nacionais OECD 2022, aplicados sobre a Taxonomia Mundial de Pegada de Carbono Individual (setores A–J) conforme a planilha de taxonomia anexa. Valores são estimativas auditáveis por lançamento; fórmulas: E = atividade × fator ÷ rateio de pessoas."), st["Sm"]))
-    SimpleDocTemplate(caminho, pagesize=A4, topMargin=14*mm, bottomMargin=12*mm,
+    SimpleDocTemplate(caminho, pagesize=landscape(A4), topMargin=14*mm, bottomMargin=12*mm,
                       leftMargin=16*mm, rightMargin=16*mm, title=f"CO2calc {u['nome']}").build(doc)
     return caminho
 
@@ -224,9 +224,9 @@ def relatorio_comparativo(con, uids, ano, grupos=None, caminho=None):
     series.insert(0, (I.FM("Todos · {n} usuários", n=len(uids)), B.PRIMARY, agg))
     p_tr = charts.line_trend(agg, I.FM("Tendência mensal — {n} usuários · {ano}", n=len(uids), ano=str(ano)),
                              name=f"rep_ctr_{ts}", series=series)
-    doc.append(RLImage(p_tr, width=165*mm, height=78*mm)); doc.append(Spacer(1, 3*mm))
+    doc.append(RLImage(p_tr, width=240*mm, height=100*mm)); doc.append(Spacer(1, 3*mm))
     p = charts.comp_usuarios(matriz, uids, nomes, name=f"_c_{ts}")
-    doc.append(RLImage(p, width=165*mm, height=82*mm)); doc.append(Spacer(1, 4*mm))
+    doc.append(RLImage(p, width=240*mm, height=105*mm)); doc.append(Spacer(1, 4*mm))
     # ADITIVO — Emissões por setor A–J em small multiples Tufte (escala comum;
     # cor = usuario), apos o comparativo por grupo. Limitacao: codigos fora de
     # A..J (ex.: 'QUICK' da calculadora rapida) ficam fora desta visao.
@@ -241,7 +241,7 @@ def relatorio_comparativo(con, uids, ano, grupos=None, caminho=None):
                                        titulo_setor_fn=lambda L: nomes_set.get(L, L),
                                        fmt_valor=lambda v: f"{v:,.0f} kg".replace(",", "."),
                                        name=f"rep_cset_{ts}", ncols=5)
-    doc.append(RLImage(p_set, width=170*mm, height=100*mm)); doc.append(Spacer(1, 2*mm))
+    doc.append(RLImage(p_set, width=250*mm, height=130*mm)); doc.append(Spacer(1, 2*mm))
     doc.append(Paragraph(I.T(NOTA_SETOR_PDF), st["Sm"]))
     doc.append(Spacer(1, 4*mm))
     data = [[I.T("Usuário"), I.T("País"), I.T("Pessoas"), I.T("Total ano (kgCO₂e)"), I.T("tCO₂e/per capita"), I.T("Score"), I.T("Classificação")]]
@@ -251,7 +251,7 @@ def relatorio_comparativo(con, uids, ano, grupos=None, caminho=None):
         an = db.anualizado(con, uid, ano, 12)
         s, lbl, _ = db.score(con, uid, ano, 12)
         data.append([nm, u["pais"], str(u["pessoas"]), _fmt(tot), _fmt(an/1000/max(1,u['pessoas'])), f"{s:.0f}", I.T(lbl)])
-    t = Table(data, colWidths=[40*mm, 14*mm, 16*mm, 36*mm, 30*mm, 14*mm, 25*mm])
+    t = Table(data, colWidths=[60*mm, 20*mm, 22*mm, 45*mm, 40*mm, 18*mm, 40*mm])
     t.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),HexColor(B.PRIMARY)), ("TEXTCOLOR",(0,0),(-1,0),HexColor("#FFFFFF")),
         ("FONTSIZE",(0,0),(-1,-1),8), ("TEXTCOLOR",(0,1),(-1,-1),HexColor(B.INK)),
@@ -260,6 +260,6 @@ def relatorio_comparativo(con, uids, ano, grupos=None, caminho=None):
         ("ALIGN",(2,1),(-1,-1),"RIGHT")]))
     doc.append(t); doc.append(Spacer(1, 3*mm))
     doc.append(Paragraph(I.T("Score = anualização per capita vs média nacional do país (OECD/Defra aprox., editável no banco)."), st["Sm"]))
-    SimpleDocTemplate(caminho, pagesize=A4, topMargin=14*mm, bottomMargin=12*mm,
+    SimpleDocTemplate(caminho, pagesize=landscape(A4), topMargin=14*mm, bottomMargin=12*mm,
                       leftMargin=16*mm, rightMargin=16*mm, title="CO2calc comparativo").build(doc)
     return caminho
