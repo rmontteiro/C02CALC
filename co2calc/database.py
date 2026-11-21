@@ -131,6 +131,9 @@ def init_db(path=None, seed_demo=True):
 
 def _migrate(cur):
     """Migração leve e idempotente: colunas novas de fatores/metodos + tabela vinculos."""
+    cols = {r["name"] for r in cur.execute("PRAGMA table_info(usuarios)").fetchall()}
+    if "cor" not in cols:   # cor por usuario (usada em graficos/legendas)
+        cur.execute("ALTER TABLE usuarios ADD COLUMN cor TEXT")
     cols = {r["name"] for r in cur.execute("PRAGMA table_info(fatores)").fetchall()}
     for nome, tipo in (("iso", "TEXT"), ("cod_atividade", "TEXT"), ("status", "TEXT"),
                        ("tecnologia", "TEXT"), ("gases", "TEXT"), ("fases", "TEXT"), ("url", "TEXT")):

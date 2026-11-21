@@ -321,6 +321,8 @@ _CAT = {
     "Tendência mensal (kgCO₂e)": ("Monthly trend (kgCO₂e)", "Tendencia mensual (kgCO₂e)"),
     "período anterior": ("previous period", "período anterior"),
     "média {v}": ("average {v}", "promedio {v}"),
+    "{n} · {ano}": ("{n} · {ano}", "{n} · {ano}"),
+    "sem dados": ("no data", "sin datos"),
     "Emissões por tipologia (kgCO₂e)": ("Emissions by typology (kgCO₂e)", "Emisiones por tipología (kgCO₂e)"),
     "Comparativo entre usuários (kgCO₂e no período)": (
         "User comparison (kgCO₂e in period)", "Comparativa entre usuarios (kgCO₂e en el período)"),
